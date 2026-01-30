@@ -36,15 +36,31 @@ st.title("🚀 Ultimate Financial Dashboard 2026")
 
 col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
-# --- KOLOM 1: SCANNER ---
+# --- KOLOM 1: SCANNER MET GEKLEURDE TABEL ---
 with col1:
     st.header("🔍 Scanner")
     watch_input = st.text_input("Watchlist:", "ASML.AS, KO, PG, JNJ, TSLA, SHEL.AS", key="c1")
     tickers = [t.strip().upper() for t in watch_input.split(",")]
-    results = [scan_aandeel(t) for t in tickers if scan_aandeel(t)]
+    
+    results = []
+    for t in tickers:
+        data = scan_aandeel(t)
+        if data: results.append(data)
+    
     if results:
         df_all = pd.DataFrame(results).sort_values(by="Score", ascending=False)
-        st.dataframe(df_all[['Ticker', 'RSI', 'Score']], use_container_width=True)
+        
+        # FUNCTIE VOOR KLEUREN IN DE TABEL
+        def color_rsi(val):
+            if val <= 35: color = '#90ee90' # Lichtgroen (Koop)
+            elif val >= 70: color = '#ffcccb' # Lichtrood (Verkoop)
+            else: color = 'white'
+            return f'background-color: {color}'
+
+        # Toepassen van de styling
+        styled_df = df_all[['Ticker', 'RSI', 'Score']].style.applymap(color_rsi, subset=['RSI'])
+        
+        st.dataframe(styled_df, use_container_width=True)
 
 # --- KOLOM 2: BESTE KANSEN ---
 with col2:
@@ -82,4 +98,5 @@ with col4:
     st.success(f"Heffing zij: €0 /j")
     st.metric("Jaarlijkse Besparing", f"€{heffing_nl:,.0f}")
     st.caption("Status Partner: Buitenlands Belastingplichtig")
+
 
