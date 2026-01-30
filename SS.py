@@ -91,4 +91,43 @@ if st.button("🚀 Start Analyse"):
         df = pd.DataFrame(results)
         st.dataframe(df.sort_values(by="Score", ascending=False), use_container_width=True)
 
-# --- 4. SECT
+# --- 4. SECTIE 2: PORTFOLIO & RISICO SPREIDING ---
+st.divider()
+st.header("⚖️ Risico & Spreiding Monitor")
+portfolio_input = st.text_input("Aandelen die je nu bezit", "KO, ASML.AS")
+mijn_tickers = [t.strip().upper() for t in portfolio_input.split(",")]
+
+if st.button("📊 Analyseer Mijn Spreiding"):
+    p_results = []
+    for t in mijn_tickers:
+        d = scan_aandeel(t)
+        if d:
+            p_results.append(d)
+    
+    if p_results:
+        df_p = pd.DataFrame(p_results)
+        
+        # Sectorverdeling
+        sector_counts = df_p['Sector'].value_counts()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Verdeling per Sector:**")
+            st.bar_chart(sector_counts)
+        
+        with col2:
+            st.write("**Status Overzicht:**")
+            for _, row in df_p.iterrows():
+                status = "✅ HOLD"
+                if row['RSI'] > 70: status = "⚠️ VERKOOPKANS"
+                if row['RSI'] < 35: status = "💎 BIJKOOPKANS"
+                st.write(f"{row['Ticker']}: {status} ({row['Sector']})")
+        
+        # Risico Waarschuwing
+        for sector, count in sector_counts.items():
+            perc = (count / len(df_p)) * 100
+            if perc > 40:
+                st.warning(f"🚨 Let op: {perc:.0f}% van je geld zit in de sector '{sector}'. Koop een aandeel in een andere sector om je risico te verlagen!")
+
+
+
