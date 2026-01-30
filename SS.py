@@ -97,8 +97,18 @@ if st.button("Check mijn Portefeuille"):
 
     if port_results:
         df_port = pd.DataFrame(port_results)
-        # Toon een overzichtelijke tabel
-        st.table(df_port[['Ticker', 'Huidige Prijs', 'RSI', 'Advies']])
-    else:
+        
+        # We printen de kolomnamen even in je app (alleen voor debuggen, mag later weg)
+        # st.write("Beschikbare kolommen:", df_port.columns.tolist())
 
-        st.error("De lijst met resultaten is leeg. Controleer je internetverbinding of de tickers in je watchlist.")
+        # Selecteer alleen kolommen die daadwerkelijk bestaan om de error te voorkomen
+        kolommen_om_te_tonen = ['Ticker', 'Prijs', 'RSI', 'Advies'] 
+        # Check welke van deze kolommen echt in de df zitten
+        bestaande_kolommen = [c for c in kolommen_om_te_tonen if c in df_port.columns]
+        
+        if bestaande_kolommen:
+            # Gebruik de kolommen die we gevonden hebben
+            st.table(df_port[bestaande_kolommen])
+        else:
+            st.error("De monitor kon de juiste gegevens niet vinden in de scan.")
+            st.write(df_port) # Toon alles zodat je ziet wat er wél is
