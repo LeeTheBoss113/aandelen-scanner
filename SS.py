@@ -87,23 +87,15 @@ c1, c2, c3, c4 = st.columns([1.2, 0.8, 1, 1])
 # --- KOLOM 1: SCANNER ---
 with c1:
     st.header("🔍 Scanner")
-    watch_input = st.text_input("Watchlist:", "AAPL, KO, ASML.AS, SHEL.AS, MO, O", key="w1")
-    
-    # Maak de lijst schoon: verwijder spaties en lege velden
-    tickers = [t.strip().upper() for t in watch_input.split(",") if t.strip()]
-    
-    results = []
-    for t in tickers:
-        # We proberen elk aandeel apart zodat 1 fout niet de hele boel blokkeert
-        res = scan_aandeel(t)
-        if res:
-            results.append(res)
-        else:
-            st.sidebar.warning(f"⚠️ Kon data voor {t} niet laden")
-
+    watch_input = st.text_input("Watchlist:", "ASML.AS, KO, PG, JNJ, O, ABBV, SHEL.AS, MO", key="w1")
+    tickers = [t.strip().upper() for t in watch_input.split(",")]
+    results = [scan_aandeel(t) for t in tickers if scan_aandeel(t)]
     if results:
         df_all = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         st.dataframe(df_all[['Ticker', 'RSI', 'Div %', 'Score']].style.background_gradient(cmap='RdYlGn', subset=['Score']), use_container_width=True)
+        # TEST REGEL (zet dit ergens in een kolom)
+st.write(yf.download("AAPL", period="1d"))
+
 # --- KOLOM 2: SIGNALEER-CENTRUM ---
 with c2:
     st.header("⚡ Signalen")
@@ -154,8 +146,6 @@ with c4:
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
     st.info("Status: Box 3 Vrijstelling actief.")
-
-
 
 
 
