@@ -84,34 +84,18 @@ with c1:
         styled_df = df_all[['Ticker', 'RSI', 'Div %', 'Score']].style.background_gradient(cmap='RdYlGn', subset=['Score'], vmin=40, vmax=100)
         st.dataframe(styled_df, use_container_width=True)
 
-# --- KOLOM 2: HET ACTIE-CENTRUM ---
-with col2:
-    st.header("⚡ Actie-Signalen")
-    
-    # 1. KOOP-SIGNALEN (Watchlist)
-    st.subheader("💎 Buy Alerts")
+with c2:
+    st.header("💎 Buy Alert")
     grails = [r for r in results if r['Score'] >= 85]
     if grails:
         for g in grails:
-            st.success(f"**KOOP: {g['Ticker']}**\nScore: {g['Score']} (RSI: {g['RSI']})")
+            st.success(f"**{g['Ticker']}**\nScore: {g['Score']}")
+            # Automatische mail trigger (optioneel: alleen bij hele hoge scores)
+            if g['Score'] >= 90:
+                st.info(f"Alert verzonden voor {g['Ticker']}")
+                # stuur_alert_mail(g['Ticker'], g['Score'], g['RSI']) # Zet dit aan als je echt mails wilt
     else:
-        st.info("Geen Holy Grails gevonden.")
-
-    st.divider()
-
-    # 2. VERKOOP-SIGNALEN (Eigen Portfolio)
-    st.subheader("🔥 Sell Alerts")
-    if p_res:
-        sells = [r for r in p_res if r['RSI'] >= 70]
-        if sells:
-            for s in sells:
-                st.warning(f"**VERKOOP: {s['Ticker']}**\nRSI: {s['RSI']}\n\n*Winst pakken?*")
-                # Optioneel: Mail sturen bij verkoop-signaal
-                # stuur_alert_mail(s['Ticker'], "N.V.T.", s['RSI']) 
-        else:
-            st.write("Geen aandelen oververhit.")
-    else:
-        st.write("Vul je bezit in in kolom 3.")
+        st.info("Geen Holy Grails.")
 
 with c3:
     st.header("⚖️ Portfolio")
@@ -130,4 +114,3 @@ with c4:
     belasting = max(0, vermogen - 57000) * 0.021
     st.metric("Besparing p/j", f"€{belasting:,.0f}")
     st.write(f"Maandelijkse extra cash: **€{belasting/12:,.2f}**")
-
