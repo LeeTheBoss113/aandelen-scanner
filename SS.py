@@ -46,21 +46,23 @@ if st.button("Bereken Beste Kansen"):
         try:
             data = scan_aandeel(s)
             results.append(data)
-        except:
-            pass
+        except Exception as e:
+            st.warning(f"Kon {s} niet laden. Check of de ticker klopt.")
         progress_bar.progress((i + 1) / len(watchlist))
     
-    df = pd.DataFrame(results)
-    
-    # SORTEREN: De hoogste score bovenaan
-    df_final = df.sort_values(by="Kansen-Score", ascending=False)
-    
-    st.subheader("Top Resultaten")
-    st.write("De score is gebaseerd op een combinatie van lage RSI en hoog dividend.")
-    
-    # Kleur de score-kolom om de winnaars te markeren
-    st.dataframe(df_final.style.background_gradient(subset=['Kansen-Score'], cmap='YlGn'))
-
-    # Extra tip voor de gebruiker
-    top_ticker = df_final.iloc[0]['Ticker']
-    st.success(f"🎯 Volgens de scan is **{top_ticker}** momenteel de meest interessante optie.")
+    # CHECK: Hebben we wel data?
+    if len(results) > 0:
+        df = pd.DataFrame(results)
+        
+        # Dubbelcheck of de kolom echt bestaat voor we sorteren
+        if "Kansen-Score" in df.columns:
+            df_final = df.sort_values(by="Kansen-Score", ascending=False)
+            st.subheader("Top Resultaten")
+            st.dataframe(df_final.style.background_gradient(subset=['Kansen-Score'], cmap='YlGn'))
+            
+            top_ticker = df_final.iloc[0]['Ticker']
+            st.success(f"🎯 Volgens de scan is **{top_ticker}** momenteel de meest interessante optie.")
+        else:
+            st.error("Kolom 'Kansen-Score' ontbreekt. Er gaat iets mis in de scan_aandeel functie.")
+    else:
+        st.error("De lijst met resultaten is leeg. Controleer je internetverbinding of de tickers in je watchlist.")
