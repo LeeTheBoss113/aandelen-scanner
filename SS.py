@@ -61,73 +61,43 @@ def stuur_alert_mail(ticker, rsi, advies):
 st.set_page_config(page_title="Ultimate Score Scanner 2026", layout="wide")
 st.title("🚀 Ultimate Score Scanner 2026")
 
-# TEST-SECTIE IN DE SIDEBAR
-with st.sidebar:
-    st.header("⚙️ Instellingen")
-    if st.button("📧 Test E-mail Verbinding"):
-        if stuur_alert_mail("TEST", 0, "TEST-MODUS"):
-            st.success("Test-mail verstuurd!")
-        else:
-            st.error("Mail mislukt. Check je Secrets.")
+# Maak twee kolommen aan voor een horizontale layout
+kolom_links, kolom_rechts = st.columns(2)
 
-# --- 3. SECTIE 1: DE SCANNER ---
-st.header("🔍 Markt Scanner")
-watchlist_input = st.text_input("Vul tickers in (gescheiden door komma)", "ASML.AS, KO, PG, JNJ, TSLA, SHEL.AS")
-tickers = [t.strip().upper() for t in watchlist_input.split(",")]
-
-if st.button("🚀 Start Analyse"):
-    results = []
-    for t in tickers:
-        data = scan_aandeel(t)
-        if data:
-            results.append(data)
-            # Mail Triggers
-            if data['RSI'] < 30:
-                stuur_alert_mail(t, data['RSI'], "KANS: ONDERGEWAARDEERD")
-            elif data['RSI'] > 75:
-                stuur_alert_mail(t, data['RSI'], "WAARSCHUWING: OVERGEKOCHT")
+# --- LINKER KOLOM: DE SCANNER ---
+with kolom_links:
+    st.header("🔍 Markt Scanner")
+    watchlist_input = st.text_input("Scanner (tickers + komma)", "ASML.AS, KO, PG, JNJ, TSLA", key="scan_in")
     
-    if results:
-        df = pd.DataFrame(results)
-        st.dataframe(df.sort_values(by="Score", ascending=False), use_container_width=True)
+    if st.button("🚀 Start Analyse", use_container_width=True):
+        results = []
+        for t in [t.strip().upper() for t in watchlist_input.split(",")]:
+            data = scan_aandeel(t)
+            if data:
+                results.append(data)
+                # Mail Triggers
+                if data['RSI'] < 30: stuur_alert_mail(t, data['RSI'], "KOOPKANS")
+        
+        if results:
+            df = pd.DataFrame(results)
+            st.dataframe(df.sort_values(by="Score", ascending=False))
 
-# --- 4. SECTIE 2: PORTFOLIO & RISICO SPREIDING ---
-st.divider()
-st.header("⚖️ Risico & Spreiding Monitor")
-portfolio_input = st.text_input("Aandelen die je nu bezit", "KO, ASML.AS")
-mijn_tickers = [t.strip().upper() for t in portfolio_input.split(",")]
-
-if st.button("📊 Analyseer Mijn Spreiding"):
-    p_results = []
-    for t in mijn_tickers:
-        d = scan_aandeel(t)
-        if d:
-            p_results.append(d)
+# --- RECHTER KOLOM: PORTFOLIO & RISICO ---
+with kolom_rechts:
+    st.header("⚖️ Portfolio Monitor")
+    portfolio_input = st.text_input("Mijn bezit (tickers + komma)", "KO, ASML.AS", key="port_in")
     
-    if p_results:
-        df_p = pd.DataFrame(p_results)
+    if st.button("📊 Check Mijn Status", use_container_width=True):
+        p_results = []
+        for t in [t.strip().upper() for t in portfolio_input.split(",")]:
+            d = scan_aandeel(t)
+            if d:
+                p_results.append(d)
         
-        # Sectorverdeling
-        sector_counts = df_p['Sector'].value_counts()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Verdeling per Sector:**")
-            st.bar_chart(sector_counts)
-        
-        with col2:
-            st.write("**Status Overzicht:**")
+        if p_results:
+            df_p = pd.DataFrame(p_results)
+            # Sector Grafiek
+            st.bar_chart(df_p['Sector'].value_counts())
+            # Beknopt statuslijstje
             for _, row in df_p.iterrows():
-                status = "✅ HOLD"
-                if row['RSI'] > 70: status = "⚠️ VERKOOPKANS"
-                if row['RSI'] < 35: status = "💎 BIJKOOPKANS"
-                st.write(f"{row['Ticker']}: {status} ({row['Sector']})")
-        
-        # Risico Waarschuwing
-        for sector, count in sector_counts.items():
-            perc = (count / len(df_p)) * 100
-            if perc > 40:
-                st.warning(f"🚨 Let op: {perc:.0f}% van je geld zit in de sector '{sector}'. Koop een aandeel in een andere sector om je risico te verlagen!")
-
-
-
+                st.write(f"**{row['Ticker']}**: RSI {row['RSI']} | {row['Sector']}")
