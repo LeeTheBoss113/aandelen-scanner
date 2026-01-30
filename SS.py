@@ -1,6 +1,31 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import smtplib
+from email.mime.text import MIMEText
+
+def stuur_alert_mail(ticker, rsi, advies):
+    # Jouw gegevens (gebruik een 'App Password' als je Gmail gebruikt!)
+    afzender = "jouw-email@gmail.com"
+    ontvanger = "jouw-email@gmail.com"
+    wachtwoord = "abcd efgh ijkl mnop" # Dit is een App Password, niet je normale wachtwoord
+
+    onderwerp = f"🚨 BEURS ALERT: {ticker} is {advies}!"
+    bericht = f"De scanner heeft een actie gevonden voor {ticker}.\n\nRSI: {rsi:.2f}\nAdvies: {advies}\n\nCheck je Trading 212 app!"
+
+    msg = MIMEText(bericht)
+    msg['Subject'] = onderwerp
+    msg['From'] = afzender
+    msg['To'] = ontvanger
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(afzender, wachtwoord)
+            server.sendmail(afzender, ontvanger, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Fout bij mailen: {e}")
+        return False
 
 st.set_page_config(page_title="Ultimate Score Scanner", layout="wide")
 st.title("🏆 Beste Kansen: RSI + Dividend Score")
@@ -97,6 +122,14 @@ if st.button("Check mijn Portefeuille"):
 
     if port_results:
         df_port = pd.DataFrame(port_results)
+        # In je for-loop van de scanner:
+        if data['RSI'] < 30:
+            stuur_alert_mail(s, data['RSI'], "KOOPKANS")
+            st.info(f"📧 Mail gestuurd voor koopkans {s}")
+            
+        if data['RSI'] > 70:
+            stuur_alert_mail(s, data['RSI'], "VERKOOPKANS")
+            st.info(f"📧 Mail gestuurd voor verkoopkans {s}")
         
         # We printen de kolomnamen even in je app (alleen voor debuggen, mag later weg)
         # st.write("Beschikbare kolommen:", df_port.columns.tolist())
@@ -112,3 +145,5 @@ if st.button("Check mijn Portefeuille"):
         else:
             st.error("De monitor kon de juiste gegevens niet vinden in de scan.")
             st.write(df_port) # Toon alles zodat je ziet wat er wél is
+            
+
