@@ -64,7 +64,20 @@ def scan_aandeel(ticker):
             "Sector": info.get('sector', 'Onbekend'), "Score": round(score, 2)
         }
     except: return None
-
+# --- SIDEBAR MET TEST KNOP ---
+with st.sidebar:
+    st.header("⚙️ Instellingen")
+    st.write("Controleer hier je verbinding:")
+    if st.button("📧 Stuur Test Email"):
+        # We roepen de functie aan met test-data
+        succes = stuur_alert_mail("TEST-AANDEEL", 99, 20, type="TEST")
+        if succes:
+            st.success("Test-mail verzonden! Check je inbox.")
+        else:
+            st.error("Email mislukt. Check je Streamlit Secrets (user, password, receiver).")
+    
+    st.divider()
+    st.caption("Holy Grail Scanner v2.0 - 2026")
 # --- 2. HET DASHBOARD ---
 st.title("🚀 Holy Grail Portfolio Dashboard 2026")
 
@@ -130,3 +143,4 @@ with c4:
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
     st.info("Status: Box 3 Vrijstelling actief.")
+
