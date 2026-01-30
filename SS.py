@@ -4,7 +4,7 @@ import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
 
-# --- 1. CONFIGURATIE & FUNCTIES ---
+# --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="Ultimate Score Scanner 2026", layout="wide")
 
 def scan_aandeel(ticker):
@@ -13,6 +13,7 @@ def scan_aandeel(ticker):
         hist = stock.history(period="1y")
         if hist.empty: return None
         
+        # RSI Berekening
         delta = hist['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -21,7 +22,6 @@ def scan_aandeel(ticker):
         
         info = stock.info
         div = info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0
-        score = (100 - rsi) + (div * 5)
         
         return {
             "Ticker": ticker,
@@ -29,16 +29,16 @@ def scan_aandeel(ticker):
             "RSI": round(rsi, 2),
             "Div %": round(div, 2),
             "Sector": info.get('sector', 'Onbekend'),
-            "Score": round(score, 2)
+            "Score": round((100 - rsi) + (div * 5), 2)
         }
     except: return None
 
-# --- 2. LAYOUT: DRIE KOLOMMEN ---
+# --- 2. HET DASHBOARD (3 KOLOMMEN) ---
 st.title("🚀 Ultimate Score Scanner 2026")
 
-col_scan, col_kansen, col_port = st.columns([1.2, 1, 1.2])
+col_scan, col_actie, col_port = st.columns([1, 1, 1])
 
-# KOLOM 1: DE VOLLEDIGE SCANNER
+# KOLOM 1: VOLLEDIGE SCANNER
 with col_scan:
     st.header("🔍 Scanner")
     watch_input = st.text_input("Watchlist:", "ASML.AS, KO, PG, JNJ, TSLA, SHEL.AS, AAPL", key="scan_in")
@@ -53,17 +53,19 @@ with col_scan:
         df_all = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         st.dataframe(df_all[['Ticker', 'RSI', 'Score']], use_container_width=True)
 
-# KOLOM 2: DE BESTE KANSEN (FILTER)
-with col_kansen:
-    st.header("💎 Top Kansen")
+# KOLOM 2: ACTIE-CENTRUM (DE KLEURTJES)
+with col_actie:
+    st.header("💎 Beste Kansen")
+    
     if results:
-        # We filteren op aandelen met een RSI onder de 40 of een Score boven de 70
-        df_kansen = df_all[df_all['RSI'] <= 40].copy()
-        if not df_kansen.empty:
-            for _, row in df_kansen.iterrows():
-                st.success(f"**{row['Ticker']}**\n\nRSI: {row['RSI']} | Score: {row['Score']}")
+        # Filter voor Koopkansen (RSI onder de 40)
+        kansen = [r for r in results if r['RSI'] <= 40]
+        
+        if kansen:
+            for k in kansen:
+                st.success(f"### 💎 KOOP: {k['Ticker']}\n**RSI:** {k['RSI']} | **Score:** {k['Score']}\n\n*Dit aandeel is momenteel goedkoop.*")
         else:
-            st.info("Geen directe koopkansen gevonden.")
+            st.info("Geen directe koopkansen (RSI < 40) gevonden. Geduld is een schone zaak!")
 
 # KOLOM 3: PORTFOLIO & RISICO
 with col_port:
@@ -78,6 +80,14 @@ with col_port:
     
     if p_results:
         df_p = pd.DataFrame(p_results)
-        st.bar_chart(df_p['Sector'].value_counts())
+        
+        # Laat waarschuwing zien als iets te duur wordt (RSI > 70)
         for _, row in df_p.iterrows():
-            st.write(f"**{row['Ticker']}**: {row['Sector']}")
+            if row['RSI'] >= 70:
+                st.warning(f"### ⚠️ VERKOOP: {row['Ticker']}\n**RSI:** {row['RSI']}\n\nWinst pakken?")
+            else:
+                st.write(f"✅ {row['Ticker']} staat op HOLD (RSI: {row['RSI']})")
+        
+        st.divider()
+        st.write("**Spreiding:**")
+        st.bar_chart(df_p['Sector'].value_counts())
