@@ -122,14 +122,38 @@ if st.button("Check mijn Portefeuille"):
 
     if port_results:
         df_port = pd.DataFrame(port_results)
-        # In je for-loop van de scanner:
-        if data['RSI'] < 30:
-            stuur_alert_mail(s, data['RSI'], "KOOPKANS")
-            st.info(f"📧 Mail gestuurd voor koopkans {s}")
-            
-        if data['RSI'] > 70:
-            stuur_alert_mail(s, data['RSI'], "VERKOOPKANS")
-            st.info(f"📧 Mail gestuurd voor verkoopkans {s}")
+       import smtplib
+from email.mime.text import MIMEText
+import streamlit as st
+
+def stuur_alert_mail(ticker, rsi, advies):
+    try:
+        # Haal gegevens veilig uit de Streamlit Cloud instellingen
+        afzender = st.secrets["email"]["user"]
+        wachtwoord = st.secrets["email"]["password"]
+        ontvanger = st.secrets["email"]["receiver"]
+
+        onderwerp = f"🚨 BEURS ALERT: {ticker} is {advies}!"
+        bericht = f"Actie vereist voor {ticker}.\n\nStatus: {advies}\nRSI: {rsi:.2f}\n\nCheck je Trading 212 app!"
+
+        msg = MIMEText(bericht)
+        msg['Subject'] = onderwerp
+        msg['From'] = afzender
+        msg['To'] = ontvanger
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(afzender, wachtwoord)
+            server.sendmail(afzender, ontvanger, msg.as_string())
+        return True
+    except Exception as e:
+        st.error(f"E-mail versturen mislukt: {e}")
+        return False
+
+# In je scan-loop (bij het berekenen van de resultaten):
+# if data['RSI'] < 30:
+#     stuur_alert_mail(s, data['RSI'], "KOOPKANS")
+# elif data['RSI'] > 70:
+#     stuur_alert_mail(s, data['RSI'], "VERKOOPKANS")
         
         # We printen de kolomnamen even in je app (alleen voor debuggen, mag later weg)
         # st.write("Beschikbare kolommen:", df_port.columns.tolist())
@@ -146,4 +170,5 @@ if st.button("Check mijn Portefeuille"):
             st.error("De monitor kon de juiste gegevens niet vinden in de scan.")
             st.write(df_port) # Toon alles zodat je ziet wat er wél is
             
+
 
