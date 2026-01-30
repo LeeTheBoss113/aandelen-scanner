@@ -5,6 +5,8 @@ import smtplib
 import time
 from email.mime.text import MIMEText
 
+df = yf.download(ticker, period="1y", threads=False, proxy=None)
+
 # --- 1. CONFIGURATIE & EMAIL ---
 st.set_page_config(page_title="Holy Grail Scanner 2026", layout="wide")
 
@@ -143,4 +145,5 @@ with c4:
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
     st.info("Status: Box 3 Vrijstelling actief.")
+
 
