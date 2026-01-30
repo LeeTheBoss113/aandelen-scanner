@@ -44,27 +44,42 @@ def stuur_alert_mail(ticker, score, rsi, type="KOOP"):
 
 def scan_aandeel(ticker):
     try:
-        df = yf.download(ticker, period="1y", threads=False, proxy=None)
-        hist = stock.history(period="1y")
-        if hist.empty: return None
-        delta = hist['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs)).iloc[-1]
-        info = stock.info
-        div = (info.get('dividendYield', 0) or 0) * 100
+        # We gebruiken download voor snelheid en stabiliteit
+        df = yf.download(ticker, period="1y", interval="1d", progress=False)
         
-        rsi_factor = 100 - rsi
-        if rsi > 70: rsi_factor -= 30 
-        if rsi < 35: rsi_factor += 25  
-        score = rsi_factor + (div * 3)
+        if df.empty or len(df) < 20:
+            return None
+            
+        # Prijzen ophalen (fix voor mogelijke multi-index)
+        close_prices = df['Close']
+        if isinstance(close_prices, pd.DataFrame):
+            close_prices = close_prices.iloc[:, 0]
+
+        # RSI berekening
+        delta = close_prices.diff()
+        up = delta.clip(lower=0)
+        down = -1 * delta.clip(upper=0)
+        ema_up = up.ewm(com=13, adjust=False).mean()
+        ema_down = down.ewm(com=13, adjust=False).mean()
+        rs = ema_up / ema_down
+        rsi = 100 - (100 / (1 + rs)).iloc[-1]
+        
+        # Dividend & Info
+        t_info = yf.Ticker(ticker).info
+        div = (t_info.get('dividendYield', 0) or 0) * 100
+        
+        # Holy Grail Score
+        score = (100 - rsi) + (div * 3)
+        if rsi < 30: score += 20 # Extra bonus voor zwaar oversold
         
         return {
-            "Ticker": ticker, "RSI": round(rsi, 2), "Div %": round(div, 2),
-            "Sector": info.get('sector', 'Onbekend'), "Score": round(score, 2)
+            "Ticker": ticker, 
+            "RSI": round(float(rsi), 2), 
+            "Div %": round(float(div), 2), 
+            "Score": round(float(score), 2)
         }
-    except: return None
+    except Exception:
+        return None
 # --- SIDEBAR MET TEST KNOP ---
 with st.sidebar:
     st.header("⚙️ Instellingen")
@@ -87,7 +102,7 @@ c1, c2, c3, c4 = st.columns([1.2, 0.8, 1, 1])
 # --- KOLOM 1: SCANNER ---
 with c1:
     st.header("🔍 Scanner")
-    watch_input = st.text_input("Watchlist:", "ASML.AS, KO, PG, JNJ, O, ABBV, SHEL.AS, MO", key="w1")
+    watch_input = st.text_input("Watchlist:", "ASML.AS, SHEL.AS, O, MO, KO, ABBV, JNJ, AD.AS, AAPL", key="w1")
     tickers = [t.strip().upper() for t in watch_input.split(",")]
     results = [scan_aandeel(t) for t in tickers if scan_aandeel(t)]
     if results:
@@ -146,6 +161,7 @@ with c4:
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
     st.info("Status: Box 3 Vrijstelling actief.")
+
 
 
 
