@@ -52,7 +52,12 @@ def stuur_alert_mail(ticker, rsi, advies):
 
 # --- 2. DE APP LAYOUT ---
 st.title("🚀 Ultimate Score Scanner 2026")
-
+if st.button("📧 Stuur Test E-mail"):
+    succes = stuur_alert_mail("TEST-TICKER", 25.0, "TEST-MODUS")
+    if succes:
+        st.success("Test-mail succesvol verstuurd! Check je inbox (en spam).")
+    else:
+        st.error("Het is niet gelukt. Check je 'Secrets' en of je App-wachtwoord klopt.")
 # Watchlist Scanner
 watchlist = st.text_input("Scanner Watchlist (tickers met komma)", "ASML.AS, AAPL, KO, SHEL.AS")
 tickers = [t.strip().upper() for t in watchlist.split(",")]
@@ -96,3 +101,4 @@ if st.button("Check mijn Status"):
     
     if portfolio_data:
         st.table(pd.DataFrame(portfolio_data)[['Ticker', 'Prijs', 'RSI', 'Advies']])
+
