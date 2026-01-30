@@ -5,7 +5,6 @@ import smtplib
 import time
 from email.mime.text import MIMEText
 
-df = yf.download(ticker, period="1y", threads=False, proxy=None)
 
 # --- 1. CONFIGURATIE & EMAIL ---
 st.set_page_config(page_title="Holy Grail Scanner 2026", layout="wide")
@@ -45,7 +44,7 @@ def stuur_alert_mail(ticker, score, rsi, type="KOOP"):
 
 def scan_aandeel(ticker):
     try:
-        stock = yf.Ticker(ticker)
+        df = yf.download(ticker, period="1y", threads=False, proxy=None)
         hist = stock.history(period="1y")
         if hist.empty: return None
         delta = hist['Close'].diff()
@@ -145,5 +144,6 @@ with c4:
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
     st.info("Status: Box 3 Vrijstelling actief.")
+
 
 
