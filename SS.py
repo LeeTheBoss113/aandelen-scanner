@@ -4,6 +4,7 @@ import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
 
+
 def stuur_alert_mail(ticker, rsi, advies):
     # Jouw gegevens (gebruik een 'App Password' als je Gmail gebruikt!)
     afzender = "jouw-email@gmail.com"
@@ -122,7 +123,7 @@ if st.button("Check mijn Portefeuille"):
 
     if port_results:
         df_port = pd.DataFrame(port_results)
-       import smtplib
+       
 from email.mime.text import MIMEText
 import streamlit as st
 
@@ -170,5 +171,6 @@ def stuur_alert_mail(ticker, rsi, advies):
             st.error("De monitor kon de juiste gegevens niet vinden in de scan.")
             st.write(df_port) # Toon alles zodat je ziet wat er wél is
             
+
 
 
