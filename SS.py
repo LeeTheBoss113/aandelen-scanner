@@ -4,101 +4,91 @@ import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
 
-# --- 1. FUNCTIES ---
+# --- 1. CONFIGURATIE & FUNCTIES ---
 def scan_aandeel(ticker):
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="1y")
-    if hist.empty:
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="1y")
+        if hist.empty:
+            return None
+        
+        # RSI Berekening (14 dagen)
+        delta = hist['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs)).iloc[-1]
+        
+        # Fundamentele Data
+        info = stock.info
+        div = info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0
+        sector = info.get('sector', 'Onbekende Sector')
+        prijs = hist['Close'].iloc[-1]
+        
+        # Score-berekening (Hoe lager RSI en hoe hoger Div, hoe beter)
+        score = (100 - rsi) + (div * 5)
+        
+        return {
+            "Ticker": ticker,
+            "Prijs": round(prijs, 2),
+            "RSI": round(rsi, 2),
+            "Dividend %": round(div, 2),
+            "Sector": sector,
+            "Score": round(score, 2)
+        }
+    except:
         return None
-    
-    # RSI Berekening
-    delta = hist['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs)).iloc[-1]
-    
-    # Dividend & Prijs
-    info = stock.info
-    div = info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0
-    prijs = hist['Close'].iloc[-1]
-    
-    # Kansen-Score
-    score = (100 - rsi) + (div * 5)
-    
-    return {
-        "Ticker": ticker,
-        "Prijs": round(prijs, 2),
-        "RSI": round(rsi, 2),
-        "Dividend %": round(div, 2),
-        "Kansen-Score": round(score, 2)
-    }
 
 def stuur_alert_mail(ticker, rsi, advies):
     try:
-        afzender = st.secrets["email"]["user"]
-        wachtwoord = st.secrets["email"]["password"]
-        ontvanger = st.secrets["email"]["receiver"]
-        msg = MIMEText(f"Actie voor {ticker}.\nRSI: {rsi:.2f}\nStatus: {advies}")
-        msg['Subject'] = f"🚨 ALERT: {ticker} = {advies}"
-        msg['From'] = afzender
-        msg['To'] = ontvanger
+        user = st.secrets["email"]["user"]
+        pw = st.secrets["email"]["password"]
+        receiver = st.secrets["email"]["receiver"]
+        
+        msg = MIMEText(f"🚨 ALERT voor {ticker}\n\nAdvies: {advies}\nRSI: {rsi:.2f}\n\nCheck je Trading 212 app.")
+        msg['Subject'] = f"Aandelen Scanner Alert: {ticker}"
+        msg['From'] = user
+        msg['To'] = receiver
+        
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(afzender, wachtwoord)
-            server.sendmail(afzender, ontvanger, msg.as_string())
+            server.login(user, pw)
+            server.sendmail(user, receiver, msg.as_string())
         return True
     except:
         return False
 
-# --- 2. DE APP LAYOUT ---
+# --- 2. APP LAYOUT ---
+st.set_page_config(page_title="Ultimate Score Scanner 2026", layout="wide")
 st.title("🚀 Ultimate Score Scanner 2026")
-if st.button("📧 Stuur Test E-mail"):
-    succes = stuur_alert_mail("TEST-TICKER", 25.0, "TEST-MODUS")
-    if succes:
-        st.success("Test-mail succesvol verstuurd! Check je inbox (en spam).")
-    else:
-        st.error("Het is niet gelukt. Check je 'Secrets' en of je App-wachtwoord klopt.")
-# Watchlist Scanner
-watchlist = st.text_input("Scanner Watchlist (tickers met komma)", "ASML.AS, AAPL, KO, SHEL.AS")
-tickers = [t.strip().upper() for t in watchlist.split(",")]
 
-if st.button("Start Marktsurvey"):
+# TEST-SECTIE IN DE SIDEBAR
+with st.sidebar:
+    st.header("⚙️ Instellingen")
+    if st.button("📧 Test E-mail Verbinding"):
+        if stuur_alert_mail("TEST", 0, "TEST-MODUS"):
+            st.success("Test-mail verstuurd!")
+        else:
+            st.error("Mail mislukt. Check je Secrets.")
+
+# --- 3. SECTIE 1: DE SCANNER ---
+st.header("🔍 Markt Scanner")
+watchlist_input = st.text_input("Vul tickers in (gescheiden door komma)", "ASML.AS, KO, PG, JNJ, TSLA, SHEL.AS")
+tickers = [t.strip().upper() for t in watchlist_input.split(",")]
+
+if st.button("🚀 Start Analyse"):
     results = []
-    progress = st.progress(0)
-    for i, t in enumerate(tickers):
-        res = scan_aandeel(t)
-        if res:
-            results.append(res)
-            # Mail triggers
-            if res['RSI'] < 30:
-                stuur_alert_mail(t, res['RSI'], "KOOPKANS")
-            elif res['RSI'] > 70:
-                stuur_alert_mail(t, res['RSI'], "VERKOOPKANS")
-        progress.progress((i + 1) / len(tickers))
+    for t in tickers:
+        data = scan_aandeel(t)
+        if data:
+            results.append(data)
+            # Mail Triggers
+            if data['RSI'] < 30:
+                stuur_alert_mail(t, data['RSI'], "KANS: ONDERGEWAARDEERD")
+            elif data['RSI'] > 75:
+                stuur_alert_mail(t, data['RSI'], "WAARSCHUWING: OVERGEKOCHT")
     
     if results:
         df = pd.DataFrame(results)
-        st.dataframe(df.sort_values(by="Kansen-Score", ascending=False))
+        st.dataframe(df.sort_values(by="Score", ascending=False), use_container_width=True)
 
-# --- 3. PORTFOLIO MONITOR (De verdwenen sectie) ---
-st.divider()
-st.header("📈 Portfolio Monitor")
-mijn_aandelen = st.text_input("Aandelen in bezit", "ASML.AS, KO")
-eigen_tickers = [t.strip().upper() for t in mijn_aandelen.split(",")]
-
-if st.button("Check mijn Status"):
-    portfolio_data = []
-    for t in eigen_tickers:
-        res = scan_aandeel(t)
-        if res:
-            if res['RSI'] > 70:
-                res['Advies'] = "⚠️ VERKOPEN"
-            elif res['RSI'] < 35:
-                res['Advies'] = "💎 BIJKOPEN"
-            else:
-                res['Advies'] = "✅ HOLD"
-            portfolio_data.append(res)
-    
-    if portfolio_data:
-        st.table(pd.DataFrame(portfolio_data)[['Ticker', 'Prijs', 'RSI', 'Advies']])
-
+# --- 4. SECT
