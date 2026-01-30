@@ -2,25 +2,44 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import smtplib
+import time
 from email.mime.text import MIMEText
 
 # --- 1. CONFIGURATIE & EMAIL ---
 st.set_page_config(page_title="Holy Grail Scanner 2026", layout="wide")
 
+# Initializeer een 'log' om mail-tijden bij te houden
+if 'mail_log' not in st.session_state:
+    st.session_state.mail_log = {}
+
 def stuur_alert_mail(ticker, score, rsi, type="KOOP"):
+    huidige_tijd = time.time()
+    last_sent = st.session_state.mail_log.get(f"{ticker}_{type}", 0)
+    
+    # Check of er al een uur verstreken is (3600 seconden)
+    if huidige_tijd - last_sent < 3600:
+        return False # Te vroeg voor een nieuwe mail
+
     try:
         user = st.secrets["email"]["user"]
         pw = st.secrets["email"]["password"]
         receiver = st.secrets["email"]["receiver"]
-        msg = MIMEText(f"🚨 {type} ALERT!\n\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}")
-        msg['Subject'] = f"🚀 {type} Signaal: {ticker}"
+        
+        inhoud = f"🚀 {type} ALERT!\n\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}\n\nCheck je dashboard voor details."
+        msg = MIMEText(inhoud)
+        msg['Subject'] = f"💎 {type} Signaal: {ticker}"
         msg['From'] = user
         msg['To'] = receiver
+        
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(user, pw)
             server.sendmail(user, receiver, msg.as_string())
+        
+        # Update de log na succesvol verzenden
+        st.session_state.mail_log[f"{ticker}_{type}"] = huidige_tijd
         return True
-    except: return False
+    except:
+        return False
 
 def scan_aandeel(ticker):
     try:
@@ -35,7 +54,6 @@ def scan_aandeel(ticker):
         info = stock.info
         div = (info.get('dividendYield', 0) or 0) * 100
         
-        # HOLY GRAIL LOGICA
         rsi_factor = 100 - rsi
         if rsi > 70: rsi_factor -= 30 
         if rsi < 35: rsi_factor += 25  
@@ -47,10 +65,9 @@ def scan_aandeel(ticker):
         }
     except: return None
 
-# --- 2. DASHBOARD ---
+# --- 2. HET DASHBOARD ---
 st.title("🚀 Holy Grail Portfolio Dashboard 2026")
 
-# Definieer de 4 kolommen
 c1, c2, c3, c4 = st.columns([1.2, 0.8, 1, 1])
 
 # --- KOLOM 1: SCANNER ---
@@ -63,57 +80,53 @@ with c1:
         df_all = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         st.dataframe(df_all[['Ticker', 'RSI', 'Div %', 'Score']].style.background_gradient(cmap='RdYlGn', subset=['Score']), use_container_width=True)
 
-# --- KOLOM 2: ACTIE-CENTRUM MET LIVE MAIL ALERTS ---
+# --- KOLOM 2: SIGNALEER-CENTRUM ---
 with c2:
     st.header("⚡ Signalen")
     
-    # 1. BUY ALERTS + MAIL
-    st.subheader("💎 Buy")
+    # BUY ALERTS
     buys = [r for r in results if r['Score'] >= 85]
     if buys:
-        for b in buys: 
-            st.success(f"**{b['Ticker']}** (Score: {b['Score']})")
-            # Trigger mail bij zeer hoge score
+        for b in buys:
+            st.success(f"**KOOP: {b['Ticker']}** (Score: {b['Score']})")
             if b['Score'] >= 90:
-                verstuurd = stuur_alert_mail(b['Ticker'], b['Score'], b['RSI'], type="KOOP")
-                if verstuurd: st.caption(f"📧 Koop-alert verzonden voor {b['Ticker']}")
-    else: 
-        st.info("Geen koopkansen")
+                if stuur_alert_mail(b['Ticker'], b['Score'], b['RSI'], "KOOP"):
+                    st.toast(f"Mail verzonden voor {b['Ticker']}!")
 
     st.divider()
 
-    # 2. SELL ALERTS + MAIL
+    # SELL ALERTS (We halen de data uit de portfolio-lijst)
     st.subheader("🔥 Sell")
+    # We definiëren p_res hier alvast voor kolom 2 en 3
     port_input = st.text_input("Mijn Bezit:", "KO, ASML.AS", key="p_in")
     p_tickers = [t.strip().upper() for t in port_input.split(",")]
     p_res = [scan_aandeel(t) for t in p_tickers if scan_aandeel(t)]
-    
+
     if p_res:
         sells = [r for r in p_res if r['RSI'] >= 70]
-        if sells:
-            for s in sells: 
-                st.warning(f"**{s['Ticker']}** (RSI: {s['RSI']})")
-                # Trigger mail bij oververhitting
-                if s['RSI'] >= 75:
-                    verstuurd = stuur_alert_mail(s['Ticker'], "N.V.T.", s['RSI'], type="VERKOOP")
-                    if verstuurd: st.caption(f"📧 Verkoop-alert verzonden voor {s['Ticker']}")
-        else: 
-            st.write("Geen verkoop nodig")
+        for s in sells:
+            st.warning(f"**VERKOOP: {s['Ticker']}** (RSI: {s['RSI']})")
+            if s['RSI'] >= 75:
+                if stuur_alert_mail(s['Ticker'], "N.V.T.", s['RSI'], "VERKOOP"):
+                    st.toast(f"Verkoop-alert verzonden!")
+    else:
+        st.info("Geen actieve sells.")
 
-# --- KOLOM 3: PORTFOLIO DETAILS ---
+# --- KOLOM 3: PORTFOLIO WEERGAVE ---
 with c3:
     st.header("⚖️ Portfolio")
     if p_res:
         df_p = pd.DataFrame(p_res)
-        st.bar_chart(df_p['Sector'].value_counts())
+        st.bar_chart(df_p.set_index('Ticker')['RSI']) # RSI per aandeel
         for r in p_res:
-            st.write(f"✅ {r['Ticker']} - RSI: {r['RSI']}")
+            st.write(f"🔹 **{r['Ticker']}** - {r['Sector']}")
+    else:
+        st.write("Portfolio is leeg.")
 
 # --- KOLOM 4: TAX BENEFIT ---
 with c4:
-    st.header("💰 Tax Benefit")
-    vermogen = st.number_input("Vermogen (€):", value=100000)
+    st.header("💰 Tax-Hedge")
+    vermogen = st.number_input("Totaal Vermogen (€):", value=100000)
     besparing = max(0, vermogen - 57000) * 0.021
-    st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}")
-    st.success(f"Route Partner: €0 belasting")
-
+    st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
+    st.info("Status: Box 3 Vrijstelling actief.")
