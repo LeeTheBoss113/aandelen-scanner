@@ -91,3 +91,27 @@ with col_port:
         st.divider()
         st.write("**Spreiding:**")
         st.bar_chart(df_p['Sector'].value_counts())
+
+# --- NIEUW: BELASTING CORRECTIE CALCULATOR ---
+with col_port:
+    st.divider()
+    st.subheader("💰 Belasting-Impact (Box 3)")
+    
+    totaal_waarde = st.number_input("Totaal belegd vermogen (€):", value=100000)
+    
+    # Berekening voor jou (als Nederlander)
+    vrijstelling = 57000  # Standaard 2026
+    belastbaar = max(0, totaal_waarde - vrijstelling)
+    jaarlijkse_heffing = belastbaar * 0.021  # De 2.1% effectieve druk
+    
+    # Berekening voor je vriendin (0% route)
+    besparing = jaarlijkse_heffing
+    
+    col_tax1, col_tax2 = st.columns(2)
+    with col_tax1:
+        st.error(f"**Jouw Heffing:**\n€{jaarlijkse_heffing:,.0f}/jaar")
+    with col_tax2:
+        st.success(f"**Route Partner:**\n€0 /jaar")
+        
+    st.info(f"💡 Door het vermogen via je partner te laten lopen, bespaar je jaarlijks **€{besparing:,.0f}** aan belasting.")
+
