@@ -70,7 +70,7 @@ with col3:
 
 # --- KOLOM 4: TAX-SAVER ---
 with col4:
-    st.header("💰 Tax-Hedge")
+    st.header("💰 Belasting")
     vermogen = st.number_input("Vermogen (€):", value=100000, step=10000)
     
     # Box 3 berekening 2026 (Forfaitair)
@@ -82,3 +82,4 @@ with col4:
     st.success(f"Heffing zij: €0 /j")
     st.metric("Jaarlijkse Besparing", f"€{heffing_nl:,.0f}")
     st.caption("Status Partner: Buitenlands Belastingplichtig")
+
