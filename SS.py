@@ -64,5 +64,41 @@ if st.button("Bereken Beste Kansen"):
             st.success(f"🎯 Volgens de scan is **{top_ticker}** momenteel de meest interessante optie.")
         else:
             st.error("Kolom 'Kansen-Score' ontbreekt. Er gaat iets mis in de scan_aandeel functie.")
+            # --- SECTIE 2: PORTFOLIO MONITOR ---
+st.divider()
+st.header("📈 Portfolio Monitor")
+st.write("Vul hier de tickers in die je al bezit om te zien of het tijd is om te verkopen.")
+
+# Invoerveld voor je eigen aandelen
+mijn_portefeuille = st.text_input("Mijn aandelen (tickers gescheiden door komma's)", "ASML.AS, KO, AAPL")
+tickers_eigen = [t.strip().upper() for t in mijn_portefeuille.split(",")]
+
+if st.button("Check mijn Portefeuille"):
+    port_results = []
+    for s in tickers_eigen:
+        try:
+            # We gebruiken dezelfde scan_aandeel functie
+            res = scan_aandeel(s)
+            
+            # Bepaal het advies op basis van RSI
+            if res['RSI'] > 70:
+                res['Advies'] = "⚠️ VERKOPEN (Winst pakken)"
+                res['Kleur'] = "background-color: #ff4b4b" # Rood
+            elif res['RSI'] < 35:
+                res['Advies'] = "💎 BIJKOPEN (Ondergewaardeerd)"
+                res['Kleur'] = "background-color: #28a745" # Groen
+            else:
+                res['Advies'] = "✅ VASTHOUDEN (Stabiel)"
+                res['Kleur'] = ""
+            
+            port_results.append(res)
+        except:
+            st.error(f"Kon data voor {s} niet ophalen.")
+
+    if port_results:
+        df_port = pd.DataFrame(port_results)
+        # Toon een overzichtelijke tabel
+        st.table(df_port[['Ticker', 'Huidige Prijs', 'RSI', 'Advies']])
     else:
+
         st.error("De lijst met resultaten is leeg. Controleer je internetverbinding of de tickers in je watchlist.")
