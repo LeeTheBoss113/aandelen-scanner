@@ -93,6 +93,8 @@ with c1:
     if results:
         df_all = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         st.dataframe(df_all[['Ticker', 'RSI', 'Div %', 'Score']].style.background_gradient(cmap='RdYlGn', subset=['Score']), use_container_width=True)
+        # TEST REGEL (zet dit ergens in een kolom)
+st.write(yf.download("AAPL", period="1d"))
 
 # --- KOLOM 2: SIGNALEER-CENTRUM ---
 with c2:
@@ -144,6 +146,7 @@ with c4:
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Jaarlijkse Besparing", f"€{besparing:,.0f}", delta="Tax Free")
     st.info("Status: Box 3 Vrijstelling actief.")
+
 
 
 
