@@ -37,23 +37,34 @@ def stuur_alert_mail(ticker, score, rsi, type="KOOP"):
 
 def scan_aandeel(ticker):
     try:
-        # threads=False tegen MemoryErrors, period="1mo" voor snelheid
+        # 1. Data ophalen
         df = yf.download(ticker, period="1mo", interval="1d", progress=False, threads=False)
-        if df.empty or len(df) < 15: return None
+        if df.empty or len(df) < 15: 
+            return None
         
-        # Kolom fix
+        # 2. Kolom fix voor Multi-index
         close_prices = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
             
-        # RSI berekening
+        # 3. RSI berekening
         delta = close_prices.diff()
         up = delta.clip(lower=0).rolling(window=14).mean()
         down = -1 * delta.clip(upper=0).rolling(window=14).mean()
         rs = up / down
         rsi = 100 - (100 / (1 + rs)).iloc[-1]
         
-        # Dividend
+        # 4. Dividend ophalen
         t_obj = yf.Ticker(ticker)
         div = (t_obj.info.get('dividendYield', 0) or 0) * 100
         
+        # 5. Score berekenen
         score = (100 - float(rsi)) + (float(div) * 3)
-
+        
+        return {
+            "Ticker": ticker, 
+            "RSI": round(float(rsi), 2), 
+            "Div %": round(float(div), 2), 
+            "Score": round(float(score), 2)
+        }
+    except Exception as e:
+        # Als er iets misgaat, vangen we het hier netjes op
+    return None
