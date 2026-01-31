@@ -74,4 +74,5 @@ def scan_aandeel(ticker):
         return {
             "Ticker": ticker, 
             "RSI": round(float(rsi), 2), 
-            "Div %": round(float(div), 2),
+            "Div %": round(float(div), 2),}
+
