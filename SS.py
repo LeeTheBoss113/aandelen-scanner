@@ -128,18 +128,33 @@ with c1:
 
 with c2:
     st.header("⚡ Signalen")
-    buys = [r for r in results_w if r['Score'] >= 85]
-    for b in buys:
-        st.success(f"**KOOP: {b['Ticker']}**")
-        if b['Score'] >= 90:
-            stuur_alert_mail(b['Ticker'], b['Score'], b['RSI'], "KOOP")
+    
+    # --- GEFILTERDE BUY ALERTS ---
+    st.subheader("💎 Buy Alerts")
+    # Een koop is pas een koop als de score hoog is EN de RSI niet te hoog (bijv. onder 60)
+    buys = [r for r in results_w if r['Score'] >= 85 and r['RSI'] < 60]
+    
+    if buys:
+        for b in buys:
+            st.success(f"**KOOP: {b['Ticker']}** (Score: {b['Score']})")
+            if b['Score'] >= 90:
+                stuur_alert_mail(b['Ticker'], b['Score'], b['RSI'], "KOOP")
+    else:
+        st.info("Geen 'ondergewaardeerde' Holy Grails gevonden.")
 
     st.divider()
-    sells = [r for r in results_p if r['RSI'] >= 70]
-    for s in sells:
-        st.warning(f"**VERKOOP: {s['Ticker']}**")
-        if s['RSI'] >= 75:
+
+    # --- GEFILTERDE SELL ALERTS ---
+    st.subheader("🔥 Sell Alerts")
+    # Een verkoop doe je alleen als de RSI echt extreem is (bijv. boven 75)
+    sells = [r for r in results_p if r['RSI'] >= 75]
+    
+    if sells:
+        for s in sells:
+            st.warning(f"**VERKOOP: {s['Ticker']}** (RSI: {s['RSI']})")
             stuur_alert_mail(s['Ticker'], "N.V.T.", s['RSI'], "VERKOOP")
+    else:
+        st.write("Geen verkoop nodig.")
 
 with c3:
     st.header("⚖️ Portfolio")
@@ -152,3 +167,4 @@ with c4:
     vermogen = st.number_input("Vermogen (€):", value=100000)
     besparing = max(0, vermogen - 57000) * 0.021
     st.metric("Box 3 Besparing", f"€{besparing:,.0f}")
+
