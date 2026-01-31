@@ -18,7 +18,8 @@ def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
         user = st.secrets["email"]["user"]
         pw = st.secrets["email"]["password"]
         receiver = st.secrets["email"]["receiver"]
-        msg = MIMEText(f"Alert voor {naam} ({ticker})\nScore: {score}\nRSI: {rsi}")
+        body = f"🚀 {type} ALERT\n\nBedrijf: {naam}\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}\n\nCheck je dashboard voor de Box 3 route!"
+        msg = MIMEText(body)
         msg['Subject'] = f"💎 {type} Signaal: {naam}"
         msg['From'] = user
         msg['To'] = receiver
@@ -30,24 +31,20 @@ def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
 
 def scan_aandeel(ticker):
     try:
-        # We halen alleen de noodzakelijke kolommen op
         df = yf.download(ticker, period="1mo", interval="1d", progress=False, threads=False)
         if df.empty or len(df) < 10: return None
         
-        # Multi-index fix
         close_prices = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
-            
-        # RSI berekening (robuust)
         delta = close_prices.diff()
         up = delta.clip(lower=0).rolling(window=14).mean()
         down = -1 * delta.clip(upper=0).rolling(window=14).mean()
-        rs = up / (down + 0.000001) # Voorkom delen door nul
+        rs = up / (down + 0.000001)
         rsi = 100 - (100 / (1 + rs)).iloc[-1]
         
-        # Info ophalen (Bedrijf + Dividend)
         t_obj = yf.Ticker(ticker)
-        naam = t_obj.info.get('longName', ticker)
-        div = (t_obj.info.get('dividendYield', 0) or 0) * 100
+        info = t_obj.info
+        naam = info.get('longName', ticker)
+        div = (info.get('dividendYield', 0) or 0) * 100
         
         score = (100 - float(rsi)) + (float(div) * 3)
         return {"Bedrijf": naam, "Ticker": ticker, "RSI": round(float(rsi), 1), "Div %": round(float(div), 2), "Score": round(float(score), 1)}
@@ -56,74 +53,86 @@ def scan_aandeel(ticker):
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Instellingen")
-    watch_input = st.text_area("Watchlist:", "ASML.AS, KO, PG, O, SHEL.AS, MO, AAPL")
+    watch_input = st.text_area("Mijn Watchlist:", "ASML.AS, KO, PG, O, ABBV, SHEL.AS, MO, AD.AS, AAPL")
     port_input = st.text_area("Mijn Bezit:", "KO, ASML.AS")
-    if st.button("📧 Test Mail"):
-        stuur_alert_mail("Test", "TEST", 0, 0, "TEST")
+    if st.button("📧 Stuur Test Mail"):
+        if stuur_alert_mail("TEST CORP", "TEST", 99, 25, type="TEST"):
+            st.success("Test-mail verzonden!")
 
 # --- 4. DATA VERZAMELEN ---
-st.title("🚀 Holy Grail Market Scanner")
+st.title("🚀 Holy Grail Market Scanner 2026")
 
-markt_benchmarks = ["NVDA", "TSLA", "AMZN", "MSFT", "META", "GOOGL", "ADYEN.AS", "INGA.AS", "BABA"]
+markt_benchmarks = ["NVDA", "TSLA", "AMZN", "MSFT", "META", "GOOGL", "ADYEN.AS", "INGA.AS", "BABA", "PYPL", "NKE"]
 tickers_w = [t.strip().upper() for t in watch_input.split(",") if t.strip()]
 tickers_p = [t.strip().upper() for t in port_input.split(",") if t.strip()]
 
 results_w, results_p, results_m = [], [], []
-
-# Dit voorkomt het 'blanco' effect: we tonen voortgang
 status = st.empty() 
 
-with st.spinner('Bezig met scannen...'):
-    # Watchlist
+with st.spinner('Bezig met diepe markt-analyse...'):
     for t in tickers_w:
-        status.text(f"🔍 Scannen: {t}...")
+        status.text(f"🔍 Scannen Watchlist: {t}...")
         res = scan_aandeel(t)
         if res: results_w.append(res)
-        time.sleep(0.2)
-    
-    # Portfolio
+        time.sleep(0.1)
     for t in tickers_p:
-        status.text(f"📊 Portfolio check: {t}...")
+        status.text(f"📊 Controleren Portfolio: {t}...")
         res = scan_aandeel(t)
         if res: results_p.append(res)
-        time.sleep(0.2)
-
-    # Markt
+        time.sleep(0.1)
     for t in markt_benchmarks:
         if t not in tickers_w:
-            status.text(f"🌍 Markt kansen: {t}...")
+            status.text(f"🌍 Zoeken naar Markt-kansen: {t}...")
             res = scan_aandeel(t)
             if res and (res['RSI'] < 35 or res['Score'] > 85):
                 results_m.append(res)
-            time.sleep(0.2)
-
-status.empty() # Verwijder de status-tekst als hij klaar is
+            time.sleep(0.1)
+status.empty()
 
 # --- 5. LAYOUT ---
 if not results_w and not results_p:
-    st.warning("⚠️ Geen data gevonden. Check je tickers of herstart de app.")
+    st.warning("⚠️ Wachten op data... Gebruik de sidebar om tickers toe te voegen.")
 else:
-    c1, c2, c3 = st.columns([1.8, 1, 1]) # Kolom 1 iets breder gemaakt voor de namen
+    c1, c2, c3, c4 = st.columns([1.5, 0.8, 1, 1])
     
     with c1:
         st.header("🔍 Scanner")
-        tab1, tab2 = st.tabs(["📋 Mijn Watchlist", "🌍 Markt Discovery"])
-        
+        tab1, tab2 = st.tabs(["📋 Watchlist", "🌍 Markt"])
         with tab1:
             if results_w:
-                df_w = pd.DataFrame(results_w)
-                # SORTEREN: Hoogste score bovenaan
-                df_w = df_w.sort_values(by="Score", ascending=False)
-                # WEERGAVE: Met kleur-indicatie op de score
+                df_w = pd.DataFrame(results_w).sort_values(by="Score", ascending=False)
                 st.dataframe(df_w.style.background_gradient(cmap='RdYlGn', subset=['Score']), use_container_width=True)
-        
         with tab2:
             if results_m:
-                df_m = pd.DataFrame(results_m)
-                # SORTEREN: Ook hier de beste kansen eerst
-                df_m = df_m.sort_values(by="Score", ascending=False)
+                df_m = pd.DataFrame(results_m).sort_values(by="Score", ascending=False)
                 st.dataframe(df_m.style.background_gradient(cmap='RdYlGn', subset=['Score']), use_container_width=True)
-            else:
-                st.info("Geen extreme uitschieters in de brede markt gevonden.")
+            else: st.info("Geen uitschieters.")
 
-    # De rest van de kolommen (Signalen en Portfolio) blijven hetzelfde...
+    with c2:
+        st.header("⚡ Signalen")
+        st.subheader("💎 Buy")
+        for r in (results_w + results_m):
+            if r['Score'] >= 85 and r['RSI'] < 60:
+                st.success(f"**{r['Bedrijf']}**")
+                if r['Score'] >= 90: stuur_alert_mail(r['Bedrijf'], r['Ticker'], r['Score'], r['RSI'], "KOOP")
+        st.divider()
+        st.subheader("🔥 Sell")
+        for r in results_p:
+            if r['RSI'] >= 75:
+                st.warning(f"**{r['Bedrijf']}**")
+                stuur_alert_mail(r['Bedrijf'], r['Ticker'], "NVT", r['RSI'], "VERKOOP")
+
+    with c3:
+        st.header("⚖️ Portfolio")
+        if results_p:
+            df_p = pd.DataFrame(results_p)
+            st.bar_chart(df_p.set_index('Bedrijf')['RSI'])
+            for r in results_p:
+                st.write(f"✅ {r['Bedrijf']}")
+
+    with c4:
+        st.header("💰 Tax")
+        vermogen = st.number_input("Totaal Vermogen (€):", value=100000)
+        besparing = max(0, vermogen - 57000) * 0.021
+        st.metric("Box 3 Besparing", f"€{besparing:,.0f}")
+        st.info("Besparing via partner-route.")
