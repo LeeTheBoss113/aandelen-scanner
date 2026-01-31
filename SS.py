@@ -55,4 +55,26 @@ def scan_aandeel(ticker):
             
         # RSI berekening
         delta = close_prices.diff()
-        up = delta.clip(lower=0).rolling(window
+        up = delta.clip(lower=0).rolling(window=14).mean()
+        down = -1 * delta.clip(upper=0).rolling(window=14).mean()
+        rs = up / down
+        rsi = 100 - (100 / (1 + rs)).iloc[-1]
+        
+        # Bedrijfsinfo ophalen
+        t_obj = yf.Ticker(ticker)
+        info = t_obj.info
+        naam = info.get('longName', ticker)
+        div = (info.get('dividendYield', 0) or 0) * 100
+        
+        # Holy Grail Score berekening
+        score = (100 - float(rsi)) + (float(div) * 3)
+        
+        return {
+            "Bedrijf": naam,
+            "Ticker": ticker, 
+            "RSI": round(float(rsi), 2), 
+            "Div %": round(float(div), 2), 
+            "Score": round(float(score), 2)
+        }
+    except:
+        return None
