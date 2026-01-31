@@ -14,67 +14,117 @@ if 'mail_log' not in st.session_state:
 # --- 2. FUNCTIES ---
 
 def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
-    huidige_tijd = time.time()
-    log_key = f"{ticker}_{type}"
-    if type != "TEST":
-        last_sent = st.session_state.mail_log.get(log_key, 0)
-        if huidige_tijd - last_sent < 3600:
-            return False
     try:
         user = st.secrets["email"]["user"]
         pw = st.secrets["email"]["password"]
         receiver = st.secrets["email"]["receiver"]
-        
-        body = f"🚨 {type} ALERT\n\nBedrijf: {naam}\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}\n\nCheck je dashboard voor de Box 3 route!"
-        msg = MIMEText(body)
+        msg = MIMEText(f"Alert voor {naam} ({ticker})\nScore: {score}\nRSI: {rsi}")
         msg['Subject'] = f"💎 {type} Signaal: {naam}"
         msg['From'] = user
         msg['To'] = receiver
-        
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(user, pw)
             server.sendmail(user, receiver, msg.as_string())
-        
-        st.session_state.mail_log[log_key] = huidige_tijd
         return True
-    except:
-        return False
+    except: return False
 
 def scan_aandeel(ticker):
     try:
-        # Threads=False tegen MemoryErrors, period="1mo" voor snelheid
+        # We halen alleen de noodzakelijke kolommen op
         df = yf.download(ticker, period="1mo", interval="1d", progress=False, threads=False)
-        if df.empty or len(df) < 15:
-            return None
+        if df.empty or len(df) < 10: return None
         
-        # Kolom fix voor Yahoo Multi-index
-        if isinstance(df.columns, pd.MultiIndex):
-            close_prices = df['Close'][ticker]
-        else:
-            close_prices = df['Close']
+        # Multi-index fix
+        close_prices = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
             
-        # RSI berekening
+        # RSI berekening (robuust)
         delta = close_prices.diff()
         up = delta.clip(lower=0).rolling(window=14).mean()
         down = -1 * delta.clip(upper=0).rolling(window=14).mean()
-        rs = up / down
+        rs = up / (down + 0.000001) # Voorkom delen door nul
         rsi = 100 - (100 / (1 + rs)).iloc[-1]
         
-        # Bedrijfsinfo ophalen
+        # Info ophalen (Bedrijf + Dividend)
         t_obj = yf.Ticker(ticker)
-        info = t_obj.info
-        naam = info.get('longName', ticker)
-        div = (info.get('dividendYield', 0) or 0) * 100
+        naam = t_obj.info.get('longName', ticker)
+        div = (t_obj.info.get('dividendYield', 0) or 0) * 100
         
-        # Holy Grail Score berekening
         score = (100 - float(rsi)) + (float(div) * 3)
+        return {"Bedrijf": naam, "Ticker": ticker, "RSI": round(float(rsi), 1), "Div %": round(float(div), 2), "Score": round(float(score), 1)}
+    except: return None
+
+# --- 3. SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Instellingen")
+    watch_input = st.text_area("Watchlist:", "ASML.AS, KO, PG, O, SHEL.AS, MO, AAPL")
+    port_input = st.text_area("Mijn Bezit:", "KO, ASML.AS")
+    if st.button("📧 Test Mail"):
+        stuur_alert_mail("Test", "TEST", 0, 0, "TEST")
+
+# --- 4. DATA VERZAMELEN ---
+st.title("🚀 Holy Grail Market Scanner")
+
+markt_benchmarks = ["NVDA", "TSLA", "AMZN", "MSFT", "META", "GOOGL", "ADYEN.AS", "INGA.AS", "BABA"]
+tickers_w = [t.strip().upper() for t in watch_input.split(",") if t.strip()]
+tickers_p = [t.strip().upper() for t in port_input.split(",") if t.strip()]
+
+results_w, results_p, results_m = [], [], []
+
+# Dit voorkomt het 'blanco' effect: we tonen voortgang
+status = st.empty() 
+
+with st.spinner('Bezig met scannen...'):
+    # Watchlist
+    for t in tickers_w:
+        status.text(f"🔍 Scannen: {t}...")
+        res = scan_aandeel(t)
+        if res: results_w.append(res)
+        time.sleep(0.2)
+    
+    # Portfolio
+    for t in tickers_p:
+        status.text(f"📊 Portfolio check: {t}...")
+        res = scan_aandeel(t)
+        if res: results_p.append(res)
+        time.sleep(0.2)
+
+    # Markt
+    for t in markt_benchmarks:
+        if t not in tickers_w:
+            status.text(f"🌍 Markt kansen: {t}...")
+            res = scan_aandeel(t)
+            if res and (res['RSI'] < 35 or res['Score'] > 85):
+                results_m.append(res)
+            time.sleep(0.2)
+
+status.empty() # Verwijder de status-tekst als hij klaar is
+
+# --- 5. LAYOUT ---
+if not results_w and not results_p:
+    st.warning("⚠️ Geen data gevonden. Check je internetverbinding of tickers.")
+else:
+    c1, c2, c3 = st.columns([1.5, 1, 1])
+    
+    with c1:
+        st.header("🔍 Scanner")
+        tab1, tab2 = st.tabs(["📋 Watchlist", "🌍 Markt"])
+        with tab1: st.dataframe(pd.DataFrame(results_w), use_container_width=True)
+        with tab2: st.dataframe(pd.DataFrame(results_m), use_container_width=True)
+
+    with c2:
+        st.header("⚡ Signalen")
+        # Signalen logica
+        for r in results_w + results_m:
+            if r['Score'] >= 85 and r['RSI'] < 60:
+                st.success(f"**KOOP: {r['Bedrijf']}**")
         
-        return {
-            "Bedrijf": naam,
-            "Ticker": ticker, 
-            "RSI": round(float(rsi), 2), 
-            "Div %": round(float(div), 2), 
-            "Score": round(float(score), 2)
-        }
-    except:
-        return None
+        st.divider()
+        for r in results_p:
+            if r['RSI'] >= 75:
+                st.warning(f"**VERKOOP: {r['Bedrijf']}**")
+
+    with c3:
+        st.header("⚖️ Portfolio")
+        if results_p:
+            df_p = pd.DataFrame(results_p)
+            st.bar_chart(df_p.set_index('Bedrijf')['RSI'])
