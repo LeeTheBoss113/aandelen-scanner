@@ -55,4 +55,5 @@ def scan_aandeel(ticker):
         t_obj = yf.Ticker(ticker)
         div = (t_obj.info.get('dividendYield', 0) or 0) * 100
         
-        score = (100 - float(rsi)) + (float(div
+        score = (100 - float(rsi)) + (float(div) * 3)
+
