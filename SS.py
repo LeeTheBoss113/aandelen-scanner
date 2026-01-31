@@ -43,11 +43,26 @@ def scan_aandeel(ticker):
         
         t_obj = yf.Ticker(ticker)
         info = t_obj.info
-        naam = info.get('longName', ticker)
-        div = (info.get('dividendYield', 0) or 0) * 100
         
+        # --- VERBETERD DIVIDEND ---
+        raw_div = info.get('dividendYield', 0)
+        if raw_div is None: raw_div = 0
+        # Yahoo geeft soms 0.005 voor 0.5%, we maken er een percentage van:
+        div = float(raw_div) * 100 if float(raw_div) < 1 else float(raw_div)
+        if div > 20: div = div / 100 # Extra check voor '40%' fouten
+        
+        naam = info.get('longName', ticker)
+        
+        # Holy Grail Score: RSI van 50 = 50 punten + (Div 0.5 * 3) = 51.5 score.
         score = (100 - float(rsi)) + (float(div) * 3)
-        return {"Bedrijf": naam, "Ticker": ticker, "RSI": round(float(rsi), 1), "Div %": round(float(div), 2), "Score": round(float(score), 1)}
+        
+        return {
+            "Bedrijf": naam, 
+            "Ticker": ticker, 
+            "RSI": round(float(rsi), 1), 
+            "Div %": round(float(div), 2), 
+            "Score": round(float(score), 1)
+        }
     except: return None
 
 # --- 3. SIDEBAR ---
@@ -136,3 +151,4 @@ else:
         besparing = max(0, vermogen - 57000) * 0.021
         st.metric("Box 3 Besparing", f"€{besparing:,.0f}")
         st.info("Besparing via partner-route.")
+
