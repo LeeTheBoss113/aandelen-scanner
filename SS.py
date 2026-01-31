@@ -74,5 +74,81 @@ def scan_aandeel(ticker):
         return {
             "Ticker": ticker, 
             "RSI": round(float(rsi), 2), 
-            "Div %": round(float(div), 2),}
+            "Div %": round(float(div), 2), 
+            "Score": round(float(score), 2)
+        }
+    except:
+        return None
 
+# --- 3. SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Instellingen")
+    if st.button("📧 Stuur Test Mail"):
+        if stuur_alert_mail("TEST", 99, 25, type="TEST"):
+            st.success("Test-mail verzonden!")
+        else:
+            st.error("Mail mislukt. Check je Secrets.")
+            
+    st.divider()
+    watch_input = st.text_area("Watchlist:", "ASML.AS, KO, PG, JNJ, O, ABBV, SHEL.AS, MO, AAPL")
+    port_input = st.text_area("Mijn Bezit:", "KO, ASML.AS")
+
+# --- 4. DASHBOARD LAYOUT ---
+st.title("🚀 Holy Grail Dashboard 2026")
+
+c1, c2, c3, c4 = st.columns([1.2, 0.8, 1, 1])
+
+# Data ophalen met pauzes tegen server-stress
+tickers_w = [t.strip().upper() for t in watch_input.split(",") if t.strip()]
+tickers_p = [t.strip().upper() for t in port_input.split(",") if t.strip()]
+
+results_w = []
+results_p = []
+
+with st.spinner('Beursdata één voor één inladen...'):
+    # Watchlist scan
+    for tw in tickers_w:
+        res = scan_aandeel(tw)
+        if res: results_w.append(res)
+        time.sleep(0.2) # Korte pauze voor stabiliteit
+        
+    # Portfolio scan
+    for tp in tickers_p:
+        res = scan_aandeel(tp)
+        if res: results_p.append(res)
+        time.sleep(0.2)
+
+# --- KOLOMMEN VULLEN ---
+
+with c1:
+    st.header("🔍 Scanner")
+    if results_w:
+        df_w = pd.DataFrame(results_w).sort_values(by="Score", ascending=False)
+        st.dataframe(df_w, use_container_width=True)
+
+with c2:
+    st.header("⚡ Signalen")
+    buys = [r for r in results_w if r['Score'] >= 85]
+    for b in buys:
+        st.success(f"**KOOP: {b['Ticker']}**")
+        if b['Score'] >= 90:
+            stuur_alert_mail(b['Ticker'], b['Score'], b['RSI'], "KOOP")
+
+    st.divider()
+    sells = [r for r in results_p if r['RSI'] >= 70]
+    for s in sells:
+        st.warning(f"**VERKOOP: {s['Ticker']}**")
+        if s['RSI'] >= 75:
+            stuur_alert_mail(s['Ticker'], "N.V.T.", s['RSI'], "VERKOOP")
+
+with c3:
+    st.header("⚖️ Portfolio")
+    if results_p:
+        df_p = pd.DataFrame(results_p)
+        st.bar_chart(df_p.set_index('Ticker')['RSI'])
+
+with c4:
+    st.header("💰 Tax")
+    vermogen = st.number_input("Vermogen (€):", value=100000)
+    besparing = max(0, vermogen - 57000) * 0.021
+    st.metric("Box 3 Besparing", f"€{besparing:,.0f}")
