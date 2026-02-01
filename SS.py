@@ -8,15 +8,12 @@ from email.mime.text import MIMEText
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="Holy Grail Scanner 2026", layout="wide")
 
-# We gebruiken session_state, maar wees ervan bewust dat dit reset bij een reboot
 if 'last_mail_sent' not in st.session_state:
     st.session_state.last_mail_sent = {}
 
 # --- 2. FUNCTIES ---
 
 def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
-    # STRENGERE TIJDSCHECK: 
-    # We slaan de datum op. Als het vandaag al gedaan is, doen we niets.
     vandaag = time.strftime("%Y-%m-%d")
     log_key = f"{ticker}_{type}_{vandaag}"
     
@@ -28,7 +25,7 @@ def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
         pw = st.secrets["email"]["password"]
         receiver = st.secrets["email"]["receiver"]
         
-        body = f"🚀 {type} ALERT\n\nBedrijf: {naam}\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}\n\nDeze mail wordt maximaal 1x per dag per aandeel verzonden."
+        body = f"🚀 {type} ALERT\n\nBedrijf: {naam}\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}\n\nCheck dashboard: Maximaal 1 mail per dag."
         msg = MIMEText(body)
         msg['Subject'] = f"💎 {type} Signaal: {naam}"
         msg['From'] = user
@@ -45,26 +42,22 @@ def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
 
 def scan_aandeel(ticker):
     try:
-        # Alleen de laatste 1 maand ophalen (bespaart geheugen)
         df = yf.download(ticker, period="1mo", interval="1d", progress=False, threads=False)
         if df.empty or len(df) < 10: return None
         
         close_prices = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
-        
-        # RSI
         delta = close_prices.diff()
         up = delta.clip(lower=0).rolling(window=14).mean()
         down = -1 * delta.clip(upper=0).rolling(window=14).mean()
         rs = up / (down + 0.000001)
         rsi = 100 - (100 / (1 + rs)).iloc[-1]
         
-        # Info
         t_obj = yf.Ticker(ticker)
         info = t_obj.info
         naam = info.get('longName', ticker)
         raw_div = info.get('dividendYield', 0) or 0
         div = float(raw_div) * 100 if float(raw_div) < 1 else float(raw_div)
-        if div > 20: div = div / 100 
+        if div > 25: div = div / 100 
         
         score = (100 - float(rsi)) + (float(div) * 3)
         return {"Bedrijf": naam, "Ticker": ticker, "RSI": round(float(rsi), 1), "Div %": round(float(div), 2), "Score": round(float(score), 1)}
@@ -73,30 +66,34 @@ def scan_aandeel(ticker):
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Instellingen")
-    watch_input = st.text_area("Watchlist:", "ASML.AS, KO, PG, O, ABBV, SHEL.AS, MO, AD.AS, AAPL")
+    watch_input = st.text_area("Watchlist:", "ASML.AS, KO, PG, O, ABBV, SHEL.AS, MO, AD.AS, AAPL, MSFT, TSLA")
     port_input = st.text_area("Mijn Bezit:", "KO, ASML.AS")
-    st.warning("E-mail filter: Alleen bij Score > 93")
+    st.info("E-mail filter: Sweet Spot (Score 88-94)")
 
-# --- 4. DATA ---
+# --- 4. DATA VERZAMELEN ---
 st.title("🚀 Holy Grail Dashboard 2026")
 
-markt_benchmarks = ["NVDA", "AMZN", "MSFT", "GOOGL", "ADYEN.AS", "INGA.AS", "BABA"]
+markt_benchmarks = ["NVDA", "AMZN", "META", "GOOGL", "ADYEN.AS", "INGA.AS", "BABA", "PYPL", "NKE"]
 tickers_w = [t.strip().upper() for t in watch_input.split(",") if t.strip()]
 tickers_p = [t.strip().upper() for t in port_input.split(",") if t.strip()]
 
 results_w, results_p, results_m = [], [], []
 status = st.empty() 
 
-with st.spinner('Markt-analyse loopt...'):
+with st.spinner('Bezig met scannen...'):
     for t in tickers_w:
-        status.text(f"🔍 Scannen: {t}...")
-        res = scan_aandeel(t); (results_w.append(res) if res else None); time.sleep(0.1)
+        status.text(f"🔍 Scan: {t}")
+        res = scan_aandeel(t)
+        if res: results_w.append(res)
+        time.sleep(0.1)
     for t in tickers_p:
-        status.text(f"📊 Portfolio: {t}...")
-        res = scan_aandeel(t); (results_p.append(res) if res else None); time.sleep(0.1)
+        status.text(f"📊 Portfolio: {t}")
+        res = scan_aandeel(t)
+        if res: results_p.append(res)
+        time.sleep(0.1)
     for t in markt_benchmarks:
         if t not in tickers_w:
-            status.text(f"🌍 Markt: {t}...")
+            status.text(f"🌍 Markt: {t}")
             res = scan_aandeel(t)
             if res and (res['RSI'] < 35 or res['Score'] > 85): results_m.append(res)
             time.sleep(0.1)
@@ -104,7 +101,7 @@ status.empty()
 
 # --- 5. LAYOUT ---
 if results_w or results_p:
-    c1, c2, c3, c4 = st.columns([1.6, 0.8, 1, 1])
+    c1, c2, c3, c4 = st.columns([1.6, 0.9, 1, 1])
     
     with c1:
         st.header("🔍 Scanner")
@@ -117,33 +114,34 @@ if results_w or results_p:
                 df_m = pd.DataFrame(results_m).sort_values(by="Score", ascending=False)
                 st.dataframe(df_m.style.background_gradient(cmap='RdYlGn', subset=['Score'], vmin=35, vmax=85), use_container_width=True)
 
-   with c2:
+    with c2:
         st.header("⚡ Signalen")
         st.subheader("💎 Buy")
-        
         for r in (results_w + results_m):
-            score = r['Score']
-            rsi = r['RSI']
-            
-            # 1. Dashboard weergave (vanaf 85)
-            if score >= 85:
-                if score > 95:
-                    st.error(f"⚠️ **{r['Bedrijf']}**: SCORE EXTREEM ({score}) - Pas op voor falling knife!")
+            s, rsi = r['Score'], r['RSI']
+            if s >= 85:
+                if s > 95:
+                    st.error(f"⚠️ **{r['Ticker']}** ({s}) - Falling Knife?")
                 else:
-                    st.success(f"**{r['Bedrijf']}** (Score: {score})")
+                    st.success(f"**{r['Ticker']}** ({s})")
                 
-                # 2. SLIMME MAIL TRIGGER (De "Sweet Spot")
-                # We mailen alleen als de score tussen 88 en 94 zit. 
-                # Dit voorkomt spam bij kleine schommelingen én waarschuwt voor 100-scores.
-                if 88 <= score <= 94:
-                    # De mail wordt alleen gestuurd als de RSI nog een beetje 'leven' vertoont (>15)
-                    if rsi > 15:
-                        stuur_alert_mail(r['Bedrijf'], r['Ticker'], score, rsi, "OPTIMALE KOOP")
+                # Sweet spot mail trigger
+                if 88 <= s <= 94 and rsi > 15:
+                    stuur_alert_mail(r['Bedrijf'], r['Ticker'], s, rsi, "OPTIMALE KOOP")
+        
+        st.divider()
+        st.subheader("🔥 Sell")
+        for r in results_p:
+            if r['RSI'] >= 75:
+                st.warning(f"**{r['Ticker']}** (RSI: {r['RSI']})")
+                if r['RSI'] >= 80:
+                    stuur_alert_mail(r['Bedrijf'], r['Ticker'], "NVT", r['RSI'], "VERKOOP")
+
     with c3:
         st.header("⚖️ Portfolio")
         if results_p:
             df_p = pd.DataFrame(results_p)
-            st.bar_chart(df_p.set_index('Bedrijf')['RSI'])
+            st.bar_chart(df_p.set_index('Ticker')['RSI'])
 
     with c4:
         st.header("💰 Tax 2026")
@@ -151,5 +149,4 @@ if results_w or results_p:
         vrijstelling = 114000
         taks = max(0, vermogen - vrijstelling) * 0.0212
         st.metric("Box 3 Belasting", f"€{taks:,.0f}")
-        st.caption(f"Heffingvrij: €{vrijstelling:,.0f}")
-
+        st.caption(f"Gezamenlijke vrijstelling: €{vrijstelling:,.0f}")
