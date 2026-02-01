@@ -4,137 +4,100 @@ import pandas as pd
 import time
 
 # --- 1. CONFIGURATIE ---
-st.set_page_config(page_title="Holy Grail Heatmap", layout="wide")
+st.set_page_config(page_title="Investment Hub 2026", layout="wide")
 
-# --- 2. DE SCAN FUNCTIE (EXTRA ROBUUST) ---
-def scan_aandeel(ticker):
+# --- 2. GEDEELDE FUNCTIE VOOR DATA ---
+def scan_aandeel(ticker, sector_naam="Watchlist"):
     try:
-        # We proberen de data op te halen. Threads=False is stabieler in de cloud.
-        data = yf.download(ticker, period="1y", interval="1d", progress=False, threads=False)
+        df = yf.download(ticker, period="1y", interval="1d", progress=False, threads=False)
+        if df.empty or len(df) < 20: return None
+        close = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
         
-        if data.empty or len(data) < 20:
-            return None
-        
-        # Herstel voor Multi-index (soms stuurt Yahoo een extra laag mee)
-        if isinstance(data.columns, pd.MultiIndex):
-            close = data['Close'][ticker]
-        else:
-            close = data['Close']
-            
-        # Berekeningen
         delta = close.diff()
-        up = delta.clip(lower=0).rolling(window=14).mean()
-        down = -1 * delta.clip(upper=0).rolling(window=14).mean()
-        rs = up / (down + 0.000001)
-        rsi_val = 100 - (100 / (1 + rs)).iloc[-1]
-        
+        up, down = delta.clip(lower=0).rolling(14).mean(), -1 * delta.clip(upper=0).rolling(14).mean()
+        rsi = 100 - (100 / (1 + (up / (down + 0.000001)))).iloc[-1]
         hi, curr = float(close.max()), float(close.iloc[-1])
         dist_top = ((hi - curr) / hi) * 100
         
-        # Kans Score
-        kans_score = (100 - float(rsi_val)) + (dist_top * 1.5)
-        
-        status = "💎 STRONG BUY" if kans_score > 85 else "✅ Buy" if kans_score > 70 else "⚖️ Hold" if rsi_val < 70 else "🔥 SELL"
+        kans_score = (100 - float(rsi)) + (dist_top * 1.5)
+        status = "💎 STRONG BUY" if kans_score > 85 else "✅ Buy" if kans_score > 70 else "⚖️ Hold" if rsi < 70 else "🔥 SELL"
         
         return {
-            "Status": status,
-            "Ticker": ticker,
-            "Kans_Score": round(float(kans_score), 1),
-            "Prijs": round(float(curr), 2),
-            "RSI": round(float(rsi_val), 1),
-            "Korting_Top": round(float(dist_top), 1),
+            "Sector": sector_naam, "Ticker": ticker, "Score": round(float(kans_score), 1),
+            "RSI": round(float(rsi), 1), "Korting": round(float(dist_top), 1),
+            "Prijs": round(float(curr), 2), "Status": status
         }
-    except Exception as e:
-        # Dit helpt ons zien wat er misgaat in de logs
-        print(f"Fout bij {ticker}: {e}")
-        return None
+    except: return None
 
-# --- 3. DASHBOARD ---
-st.title("🎯 Markt Kansen Heatmap")
-
+# --- 3. SIDEBAR NAVIGATIE ---
 with st.sidebar:
-    st.header("⚙️ Instellingen")
-    user_tickers = st.text_area("Mijn Watchlist:", "ASML.AS, KO, TSLA, AAPL")
+    st.title("🚀 Hub Navigatie")
+    keuze = st.radio("Kies je overzicht:", ["🏠 Home & Sectoren", "📋 Mijn Watchlist", "💰 Tax Calculator"])
+    st.divider()
+    st.info("De Hub ververst live data van Yahoo Finance.")
+
+# --- 4. PAGINA: HOME & SECTOREN ---
+if keuze == "🏠 Home & Sectoren":
+    st.title("🎯 Sector-Gespreide Heatmap")
+    SECTOREN = {
+        "💻 Big Tech": ["NVDA", "MSFT", "GOOGL", "AMZN", "AAPL", "TSLA", "ASML.AS"],
+        "🏦 Finance": ["INGA.AS", "ABN.AS", "V", "MA", "JPM", "GS"],
+        "⛽ Energie": ["SHEL.AS", "XOM", "CVX", "TTE", "BP"],
+        "🛒 Consument": ["AD.AS", "WMT", "COST", "NKE", "DIS", "MCD"],
+        "🧪 Recovery": ["PYPL", "BABA", "INTC", "CRM", "SQ", "SHOP"]
+    }
     
-    # DE MARKT OVERALL (TOP 50)
-    # Een mix van Tech, Dividend, AEX en Groei
-    markt_top_50 = [
-        "NVDA", "MSFT", "GOOGL", "AMZN", "META", "AVGO", "COST", "NFLX", "AMD", # Tech
-        "ASML.AS", "ADYEN.AS", "INGA.AS", "AD.AS", "SHEL.AS", "RDSA.AS", # AEX
-        "JNJ", "PG", "V", "MA", "ABBV", "PEP", "XOM", "CVX", "WMT", # Dividend / Value
-        "NKE", "DIS", "PYPL", "BABA", "CRM", "INTC", "PLTR", "UBER", "ABNB", # Groei / Herstel
-        "O", "MO", "T", "VZ", "PFE", "MRK", "MCD", "NSRGY", "OR.PA", "MC.PA" # Global Giants
-    ]
+    all_results = []
+    progress = st.progress(0)
+    ticker_flat_list = [t for sublist in SECTOREN.values() for t in sublist]
     
-    st.info(f"De scanner analyseert nu {len(markt_top_50)} markt-leiders + jouw watchlist.")
-
-# Combineer en verwijder dubbelen
-ticker_list = list(set([t.strip().upper() for t in user_tickers.split(",") if t.strip()] + markt_top_50))
-results = []
-
-# --- 4. HET LADEN ---
-if ticker_list:
-    placeholder = st.empty()
-    with placeholder.container():
-        st.info("Bezig met ophalen van live marktdata... Een moment geduld.")
-        progress_bar = st.progress(0)
-        
-        for i, t in enumerate(ticker_list):
-            res = scan_aandeel(t)
-            if res:
-                results.append(res)
-            # Kleine pauze om Yahoo niet te overbelasten
-            time.sleep(0.2)
-            progress_bar.progress((i + 1) / len(ticker_list))
+    for i, (sec, tickers) in enumerate(SECTOREN.items()):
+        for t in tickers:
+            res = scan_aandeel(t, sec)
+            if res: all_results.append(res)
+        progress.progress((i + 1) / len(SECTOREN))
     
-    placeholder.empty() # Verwijder de laad-melding
+    if all_results:
+        df_all = pd.DataFrame(all_results)
+        cols = st.columns(len(SECTOREN))
+        for i, (sec_naam, col) in enumerate(zip(SECTOREN.keys(), cols)):
+            with col:
+                st.subheader(sec_naam)
+                sec_df = df_all[df_all['Sector'] == sec_naam].sort_values('Score', ascending=False).head(3)
+                for row in sec_df.itertuples():
+                    with st.container(border=True):
+                        st.metric(label=row.Ticker, value=f"{row.Score} Ptn", delta=f"-{row.Korting}%")
+                        if "STRONG" in row.Status: st.success(row.Status)
+                        elif "Buy" in row.Status: st.info(row.Status)
+                        elif "SELL" in row.Status: st.error(row.Status)
+                        else: st.warning(row.Status)
 
-# --- 5. WEERGAVE ---
-if results:
-    df = pd.DataFrame(results).sort_values(by="Kans_Score", ascending=False)
+# --- 5. PAGINA: MIJN WATCHLIST ---
+elif keuze == "📋 Mijn Watchlist":
+    st.title("📋 Persoonlijke Scanner")
+    user_input = st.text_input("Voeg tickers toe (gescheiden door komma):", "ASML.AS, KO, TSLA, AAPL")
+    tickers = [t.strip().upper() for t in user_input.split(",") if t.strip()]
+    
+    results = []
+    for t in tickers:
+        res = scan_aandeel(t)
+        if res: results.append(res)
+    
+    if results:
+        df_w = pd.DataFrame(results).sort_values('Score', ascending=False)
+        st.dataframe(df_w.style.background_gradient(cmap='RdYlGn', subset=['Score'], vmin=40, vmax=100), use_container_width=True)
 
-    # We maken twee hoofdkolommen: links de tabel (60%), rechts de topkaarten (40%)
-    main_col_left, main_col_right = st.columns([1.5, 1])
-
-    with main_col_left:
-        st.subheader("🔥 Markt Heatmap")
-        st.dataframe(
-            df.style.background_gradient(cmap='RdYlGn', subset=['Kans_Score'], vmin=40, vmax=100),
-            column_config={
-                "Kans_Score": st.column_config.ProgressColumn("Score", format="%.0f", min_value=0, max_value=150),
-                "Korting_Top": st.column_config.NumberColumn("Korting", format="%.1f%%"),
-                "Prijs": st.column_config.NumberColumn("Koers", format="€%.2f"),
-                "RSI": st.column_config.NumberColumn("RSI", format="%.0f"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            height=800 # Zorgt dat de tabel lang genoeg is voor je monitor
-        )
-
-    with main_col_right:
-        st.subheader("🏆 Top 15 Selectie")
-        
-        # We maken binnen de rechterkolom een grid van 2 breed voor de kaartjes
-        grid_cols = st.columns(2)
-        top_15 = df.head(15)
-        
-        for idx, row in enumerate(top_15.itertuples()):
-            with grid_cols[idx % 2]:
-                with st.container(border=True):
-                    # Compactere weergave voor de zijbalk
-                    st.markdown(f"**{idx+1}. {row.Ticker}**")
-                    st.metric(label="Score", value=f"{row.Kans_Score}", delta=f"-{row.Korting_Top}%")
-                    
-                    if "STRONG BUY" in row.Status:
-                        st.success(row.Status)
-                    elif "Buy" in row.Status:
-                        st.info(row.Status)
-                    elif "Hold" in row.Status:
-                        st.warning(row.Status)
-                    else:
-                        st.error(row.Status)
-                    
-                    st.caption(f"€{row.Prijs} | RSI: {row.RSI}")
-
-else:
-    st.warning("Geen data gevonden. Voeg meer tickers toe in de sidebar.")
+# --- 6. PAGINA: TAX ---
+elif keuze == "💰 Tax Calculator":
+    st.title("💰 Belastingdruk Box 3 (2026)")
+    vermogen = st.number_input("Totaal Vermogen (€):", value=120000, step=1000)
+    vrijstelling = 114000
+    belastbaar = max(0, vermogen - vrijstelling)
+    taks = belastbaar * 0.0212
+    
+    c1, c2 = st.columns(2)
+    c1.metric("Te betalen belasting", f"€{taks:,.0f}")
+    c2.metric("Heffingsvrij vermogen", f"€{vrijstelling:,.0f}")
+    
+    st.progress(min(1.0, vermogen / 200000))
+    st.caption("Let op: Dit is een schatting op basis van de verwachte tarieven voor 2026.")
