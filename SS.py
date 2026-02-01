@@ -86,7 +86,7 @@ if ticker_list:
 if results:
     df = pd.DataFrame(results).sort_values(by="Kans_Score", ascending=False)
 
-    st.subheader("🔥 Actuele Kansen")
+    st.subheader("🔥 Volledige Heatmap")
     st.dataframe(
         df,
         column_config={
@@ -99,14 +99,35 @@ if results:
     )
 
     st.divider()
-    st.subheader("🏆 Top 10")
-    top_3 = df.head(10)
-    cols = st.columns(10)
-    for idx, row in enumerate(top_3.itertuples()):
-        with cols[idx]:
-            st.metric(label=row.Ticker, value=f"{row.Kans_Score} Ptn", delta=f"-{row.Korting_Top}%")
-            st.write(f"Status: **{row.Status}**")
+    st.subheader("🏆 De Holy Grail Top 15")
+    
+    # Selecteer de top 15
+    top_15 = df.head(15)
+    
+    # Maak een grid van 3 kolommen breed
+    cols = st.columns(3)
+    
+    for idx, row in enumerate(top_15.itertuples()):
+        # Bepaal welke kolom (0, 1 of 2)
+        col_idx = idx % 3
+        with cols[col_idx]:
+            # Container voor een nette omlijning
+            with st.container(border=True):
+                st.metric(
+                    label=f"{idx+1}. {row.Ticker}", 
+                    value=f"{row.Kans_Score} Ptn", 
+                    delta=f"-{row.Korting_Top}% korting"
+                )
+                
+                # Kleurcode op basis van status
+                if "STRONG" in row.Status:
+                    st.success(f"**{row.Status}**")
+                elif "Buy" in row.Status:
+                    st.info(f"**{row.Status}**")
+                else:
+                    st.warning(f"**{row.Status}**")
+                
+                st.caption(f"RSI: {row.RSI} | Koers: €{row.Prijs}")
+
 else:
-    st.warning("Er kon geen data worden opgehaald. Probeer de 'Forceer Herstart' knop in de sidebar of check of je tickers (bijv. AAPL) correct zijn.")
-
-
+    st.warning("Geen data gevonden. Voeg meer tickers toe in de sidebar.")
