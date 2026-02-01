@@ -54,15 +54,22 @@ st.title("🎯 Markt Kansen Heatmap")
 
 with st.sidebar:
     st.header("⚙️ Instellingen")
-    # Kortere lijst om te testen of hij nu wel laadt
-    tickers_default = "ASML.AS, KO, GOOGL, NVDA, TSLA, SHEL.AS, AAPL"
-    tickers = st.text_area("Vul hier je tickers in:", tickers_default)
-    st.divider()
-    if st.button("♻️ Forceer Herstart"):
-        st.cache_data.clear()
-        st.rerun()
+    user_tickers = st.text_area("Mijn Watchlist:", "ASML.AS, KO, TSLA, AAPL")
+    
+    # DE MARKT OVERALL (TOP 50)
+    # Een mix van Tech, Dividend, AEX en Groei
+    markt_top_50 = [
+        "NVDA", "MSFT", "GOOGL", "AMZN", "META", "AVGO", "COST", "NFLX", "AMD", # Tech
+        "ASML.AS", "ADYEN.AS", "INGA.AS", "AD.AS", "SHEL.AS", "RDSA.AS", # AEX
+        "JNJ", "PG", "V", "MA", "ABBV", "PEP", "XOM", "CVX", "WMT", # Dividend / Value
+        "NKE", "DIS", "PYPL", "BABA", "CRM", "INTC", "PLTR", "UBER", "ABNB", # Groei / Herstel
+        "O", "MO", "T", "VZ", "PFE", "MRK", "MCD", "NSRGY", "OR.PA", "MC.PA" # Global Giants
+    ]
+    
+    st.info(f"De scanner analyseert nu {len(markt_top_50)} markt-leiders + jouw watchlist.")
 
-ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+# Combineer en verwijder dubbelen
+ticker_list = list(set([t.strip().upper() for t in user_tickers.split(",") if t.strip()] + markt_top_50))
 results = []
 
 # --- 4. HET LADEN ---
@@ -130,3 +137,4 @@ if results:
 
 else:
     st.warning("Geen data gevonden. Voeg meer tickers toe in de sidebar.")
+
