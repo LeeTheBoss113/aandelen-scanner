@@ -93,48 +93,48 @@ if ticker_list:
 if results:
     df = pd.DataFrame(results).sort_values(by="Kans_Score", ascending=False)
 
-    st.subheader("🔥 Volledige Heatmap")
-    # Kleurstelling in de tabel: Hoogste kans is groen, Sell (Lage kans score) is rood
-    st.dataframe(
-        df.style.background_gradient(cmap='RdYlGn', subset=['Kans_Score'], vmin=40, vmax=100),
-        column_config={
-            "Kans_Score": st.column_config.ProgressColumn("Verdienkans", format="%.1f", min_value=0, max_value=150),
-            "Korting_Top": st.column_config.NumberColumn("Korting %", format="%.1f%%"),
-            "Prijs": st.column_config.NumberColumn("Koers", format="€%.2f"),
-        },
-        hide_index=True,
-        use_container_width=True
-    )
+    # We maken twee hoofdkolommen: links de tabel (60%), rechts de topkaarten (40%)
+    main_col_left, main_col_right = st.columns([1.5, 1])
 
-    st.divider()
-    st.subheader("🏆 De Holy Grail Top 15")
-    
-    top_15 = df.head(15)
-    cols = st.columns(3)
-    
-    for idx, row in enumerate(top_15.itertuples()):
-        col_idx = idx % 3
-        with cols[col_idx]:
-            with st.container(border=True):
-                # De metric laat de score zien
-                st.metric(
-                    label=f"{idx+1}. {row.Ticker}", 
-                    value=f"{row.Kans_Score} Ptn", 
-                    delta=f"-{row.Korting_Top}% korting"
-                )
-                
-                # --- DYNAMISCHE KLEUR LOGICA ---
-                if "STRONG BUY" in row.Status:
-                    st.success(f"💎 {row.Status}") # Groen
-                elif "Buy" in row.Status:
-                    st.info(f"✅ {row.Status}")    # Blauw/Lichtgroen
-                elif "Hold" in row.Status:
-                    st.warning(f"⚖️ {row.Status}") # Oranje
-                elif "SELL" in row.Status:
-                    st.error(f"🔥 {row.Status}")   # Rood
-                
-                st.caption(f"RSI: {row.RSI} | Koers: €{row.Prijs}")
+    with main_col_left:
+        st.subheader("🔥 Markt Heatmap")
+        st.dataframe(
+            df.style.background_gradient(cmap='RdYlGn', subset=['Kans_Score'], vmin=40, vmax=100),
+            column_config={
+                "Kans_Score": st.column_config.ProgressColumn("Score", format="%.0f", min_value=0, max_value=150),
+                "Korting_Top": st.column_config.NumberColumn("Korting", format="%.1f%%"),
+                "Prijs": st.column_config.NumberColumn("Koers", format="€%.2f"),
+                "RSI": st.column_config.NumberColumn("RSI", format="%.0f"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=800 # Zorgt dat de tabel lang genoeg is voor je monitor
+        )
+
+    with main_col_right:
+        st.subheader("🏆 Top 15 Selectie")
+        
+        # We maken binnen de rechterkolom een grid van 2 breed voor de kaartjes
+        grid_cols = st.columns(2)
+        top_15 = df.head(15)
+        
+        for idx, row in enumerate(top_15.itertuples()):
+            with grid_cols[idx % 2]:
+                with st.container(border=True):
+                    # Compactere weergave voor de zijbalk
+                    st.markdown(f"**{idx+1}. {row.Ticker}**")
+                    st.metric(label="Score", value=f"{row.Kans_Score}", delta=f"-{row.Korting_Top}%")
+                    
+                    if "STRONG BUY" in row.Status:
+                        st.success(row.Status)
+                    elif "Buy" in row.Status:
+                        st.info(row.Status)
+                    elif "Hold" in row.Status:
+                        st.warning(row.Status)
+                    else:
+                        st.error(row.Status)
+                    
+                    st.caption(f"€{row.Prijs} | RSI: {row.RSI}")
 
 else:
     st.warning("Geen data gevonden. Voeg meer tickers toe in de sidebar.")
-
