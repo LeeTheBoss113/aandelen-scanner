@@ -22,7 +22,6 @@ def scan_aandeel(ticker, sector):
         if df is None or df.empty or len(df) < 15:
             return None
         
-        # Plat de kolommen af voor Yahoo Finance compatibiliteit
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
@@ -37,23 +36,17 @@ def scan_aandeel(ticker, sector):
         curr = float(close.iloc[-1])
         dist_top = ((hi - curr) / hi) * 100
         
-        # Formule voor de Kans Score
         score = (100 - float(rsi)) + (dist_top * 1.5)
         
-        # Logica voor Status
         if score > 85: status = "💎 STRONG BUY"
         elif score > 70: status = "✅ Buy"
         elif rsi > 70 or dist_top < 0.5: status = "🔥 SELL"
         else: status = "⚖️ Hold"
         
         return {
-            "Sector": sector,
-            "Ticker": ticker,
-            "Score": round(float(score), 1),
-            "RSI": round(float(rsi), 1),
-            "Korting": round(float(dist_top), 1),
-            "Prijs": round(float(curr), 2),
-            "Status": status
+            "Sector": sector, "Ticker": ticker, "Score": round(float(score), 1),
+            "RSI": round(float(rsi), 1), "Korting": round(float(dist_top), 1),
+            "Prijs": round(float(curr), 2), "Status": status
         }
     except:
         return None
@@ -70,7 +63,6 @@ all_results = []
 progress_bar = st.progress(0)
 status_text = st.empty()
 
-# DE HERSTELDE LOOP (Regel 71)
 for i, (t, s) in enumerate(ticker_items):
     status_text.text(f"Scannen: {t} ({s})")
     res = scan_aandeel(t, s)
@@ -96,9 +88,7 @@ if all_results:
                 "Korting": st.column_config.NumberColumn("Korting %", format="%.1f%%"),
                 "Prijs": st.column_config.NumberColumn("Koers", format="€%.2f"),
             },
-            hide_index=True,
-            use_container_width=True,
-            height=800
+            hide_index=True, use_container_width=True, height=800
         )
 
     with col_right:
@@ -107,7 +97,17 @@ if all_results:
             st.markdown(f"#### {sector_naam}")
             sec_df = df_all[df_all['Sector'] == sector_naam].head(3)
             
+            # De fix voor de kaarten:
             card_cols = st.columns(3)
             for idx, row in enumerate(sec_df.itertuples()):
+                # Belangrijk: alles hieronder moet 1 extra stap naar rechts ingesprongen zijn
                 with card_cols[idx]:
                     with st.container(border=True):
+                        st.metric(label=row.Ticker, value=f"{row.Score} Ptn", delta=f"-{row.Korting}%")
+                        if "STRONG" in row.Status: st.success(row.Status)
+                        elif "Buy" in row.Status: st.info(row.Status)
+                        elif "SELL" in row.Status: st.error(row.Status)
+                        else: st.warning(row.Status)
+                        st.caption(f"RSI: {row.RSI} | €{row.Prijs}")
+else:
+    st.error("Data kon niet worden geladen.")
