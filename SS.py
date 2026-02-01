@@ -15,39 +15,35 @@ SECTOREN = {
     "🧪 Recovery": ["PYPL", "BABA", "INTC", "CRM", "SQ", "SHOP"]
 }
 
-# --- 3. ROBUUSTE DATA FUNCTIE ---
+# --- 3. DATA FUNCTIE ---
 def scan_aandeel(ticker, sector):
     try:
-        # Haal data op met extra veiligheidsmarge
         df = yf.download(ticker, period="1y", interval="1d", progress=False, threads=False)
-        
         if df is None or df.empty or len(df) < 15:
             return None
         
-        # FIX: Forceer data naar een platte structuur (verwijdert MultiIndex issues)
+        # Plat de kolommen af voor Yahoo Finance compatibiliteit
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
         close = df['Close']
-        
-        # RSI berekening
         delta = close.diff()
         up = delta.clip(lower=0).rolling(14).mean()
         down = -1 * delta.clip(upper=0).rolling(14).mean()
         rs = up / (down + 0.000001)
         rsi = 100 - (100 / (1 + rs.iloc[-1]))
         
-        # Prijs stats
         hi = float(close.max())
         curr = float(close.iloc[-1])
         dist_top = ((hi - curr) / hi) * 100
         
-        # Score & Status
+        # Formule voor de Kans Score
         score = (100 - float(rsi)) + (dist_top * 1.5)
         
+        # Logica voor Status
         if score > 85: status = "💎 STRONG BUY"
         elif score > 70: status = "✅ Buy"
-        elif rsi > 70: status = "🔥 SELL"
+        elif rsi > 70 or dist_top < 0.5: status = "🔥 SELL"
         else: status = "⚖️ Hold"
         
         return {
@@ -59,13 +55,59 @@ def scan_aandeel(ticker, sector):
             "Prijs": round(float(curr), 2),
             "Status": status
         }
-    except Exception as e:
+    except:
         return None
 
 # --- 4. DATA LADEN ---
 st.title("🎯 Holy Grail: Sector Spread Dashboard")
 
-all_results = []
 ticker_items = []
 for s, ts in SECTOREN.items():
-    for t in
+    for t in ts:
+        ticker_items.append((t, s))
+
+all_results = []
+progress_bar = st.progress(0)
+status_text = st.empty()
+
+# DE HERSTELDE LOOP (Regel 71)
+for i, (t, s) in enumerate(ticker_items):
+    status_text.text(f"Scannen: {t} ({s})")
+    res = scan_aandeel(t, s)
+    if res:
+        all_results.append(res)
+    progress_bar.progress((i + 1) / len(ticker_items))
+
+status_text.empty()
+progress_bar.empty()
+
+# --- 5. VISUALISATIE ---
+if all_results:
+    df_all = pd.DataFrame(all_results).sort_values("Score", ascending=False)
+    
+    col_left, col_right = st.columns([1, 1.5])
+
+    with col_left:
+        st.subheader("📊 Marktlijst")
+        st.dataframe(
+            df_all,
+            column_config={
+                "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=150, format="%.0f"),
+                "Korting": st.column_config.NumberColumn("Korting %", format="%.1f%%"),
+                "Prijs": st.column_config.NumberColumn("Koers", format="€%.2f"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=800
+        )
+
+    with col_right:
+        st.subheader("🏆 Sector Favorieten")
+        for sector_naam in SECTOREN.keys():
+            st.markdown(f"#### {sector_naam}")
+            sec_df = df_all[df_all['Sector'] == sector_naam].head(3)
+            
+            card_cols = st.columns(3)
+            for idx, row in enumerate(sec_df.itertuples()):
+                with card_cols[idx]:
+                    with st.container(border=True):
