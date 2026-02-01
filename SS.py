@@ -117,16 +117,28 @@ if results_w or results_p:
                 df_m = pd.DataFrame(results_m).sort_values(by="Score", ascending=False)
                 st.dataframe(df_m.style.background_gradient(cmap='RdYlGn', subset=['Score'], vmin=35, vmax=85), use_container_width=True)
 
-    with c2:
+   with c2:
         st.header("⚡ Signalen")
-        # VISUELE SIGNALE (vanaf 85)
+        st.subheader("💎 Buy")
+        
         for r in (results_w + results_m):
-            if r['Score'] >= 85:
-                st.success(f"**{r['Bedrijf']}**")
-                # E-MAIL ALLEEN BIJ EXTREME KANS (93+)
-                if r['Score'] >= 93:
-                    stuur_alert_mail(r['Bedrijf'], r['Ticker'], r['Score'], r['RSI'], "KOOP")
-
+            score = r['Score']
+            rsi = r['RSI']
+            
+            # 1. Dashboard weergave (vanaf 85)
+            if score >= 85:
+                if score > 95:
+                    st.error(f"⚠️ **{r['Bedrijf']}**: SCORE EXTREEM ({score}) - Pas op voor falling knife!")
+                else:
+                    st.success(f"**{r['Bedrijf']}** (Score: {score})")
+                
+                # 2. SLIMME MAIL TRIGGER (De "Sweet Spot")
+                # We mailen alleen als de score tussen 88 en 94 zit. 
+                # Dit voorkomt spam bij kleine schommelingen én waarschuwt voor 100-scores.
+                if 88 <= score <= 94:
+                    # De mail wordt alleen gestuurd als de RSI nog een beetje 'leven' vertoont (>15)
+                    if rsi > 15:
+                        stuur_alert_mail(r['Bedrijf'], r['Ticker'], score, rsi, "OPTIMALE KOOP")
     with c3:
         st.header("⚖️ Portfolio")
         if results_p:
@@ -140,3 +152,4 @@ if results_w or results_p:
         taks = max(0, vermogen - vrijstelling) * 0.0212
         st.metric("Box 3 Belasting", f"€{taks:,.0f}")
         st.caption(f"Heffingvrij: €{vrijstelling:,.0f}")
+
