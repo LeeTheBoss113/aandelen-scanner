@@ -106,7 +106,7 @@ if results:
     
     # Maak een grid van 3 kolommen breed
     cols = st.columns(3)
-    rows = st.rows(3)
+
     
     for idx, row in enumerate(top_15.itertuples()):
         # Bepaal welke kolom (0, 1 of 2)
@@ -132,4 +132,5 @@ if results:
 
 else:
     st.warning("Geen data gevonden. Voeg meer tickers toe in de sidebar.")
+
 
