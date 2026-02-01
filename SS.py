@@ -87,8 +87,9 @@ if results:
     df = pd.DataFrame(results).sort_values(by="Kans_Score", ascending=False)
 
     st.subheader("🔥 Volledige Heatmap")
+    # Kleurstelling in de tabel: Hoogste kans is groen, Sell (Lage kans score) is rood
     st.dataframe(
-        df,
+        df.style.background_gradient(cmap='RdYlGn', subset=['Kans_Score'], vmin=40, vmax=100),
         column_config={
             "Kans_Score": st.column_config.ProgressColumn("Verdienkans", format="%.1f", min_value=0, max_value=150),
             "Korting_Top": st.column_config.NumberColumn("Korting %", format="%.1f%%"),
@@ -101,36 +102,31 @@ if results:
     st.divider()
     st.subheader("🏆 De Holy Grail Top 15")
     
-    # Selecteer de top 15
     top_15 = df.head(15)
-    
-    # Maak een grid van 3 kolommen breed
     cols = st.columns(3)
-
     
     for idx, row in enumerate(top_15.itertuples()):
-        # Bepaal welke kolom (0, 1 of 2)
         col_idx = idx % 3
         with cols[col_idx]:
-            # Container voor een nette omlijning
             with st.container(border=True):
+                # De metric laat de score zien
                 st.metric(
                     label=f"{idx+1}. {row.Ticker}", 
                     value=f"{row.Kans_Score} Ptn", 
                     delta=f"-{row.Korting_Top}% korting"
                 )
                 
-                # Kleurcode op basis van status
-                if "STRONG" in row.Status:
-                    st.success(f"**{row.Status}**")
+                # --- DYNAMISCHE KLEUR LOGICA ---
+                if "STRONG BUY" in row.Status:
+                    st.success(f"💎 {row.Status}") # Groen
                 elif "Buy" in row.Status:
-                    st.info(f"**{row.Status}**")
-                else:
-                    st.warning(f"**{row.Status}**")
+                    st.info(f"✅ {row.Status}")    # Blauw/Lichtgroen
+                elif "Hold" in row.Status:
+                    st.warning(f"⚖️ {row.Status}") # Oranje
+                elif "SELL" in row.Status:
+                    st.error(f"🔥 {row.Status}")   # Rood
                 
                 st.caption(f"RSI: {row.RSI} | Koers: €{row.Prijs}")
 
 else:
     st.warning("Geen data gevonden. Voeg meer tickers toe in de sidebar.")
-
-
