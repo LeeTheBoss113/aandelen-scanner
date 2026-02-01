@@ -1,145 +1,96 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import smtplib
 import time
-from email.mime.text import MIMEText
 
 # --- 1. CONFIGURATIE ---
-st.set_page_config(page_title="Holy Grail Scanner 2026", layout="wide")
+st.set_page_config(page_title="Holy Grail Heatmap", layout="wide")
 
-if 'last_mail_sent' not in st.session_state:
-    st.session_state.last_mail_sent = {}
-
-# --- 2. FUNCTIES ---
-
-def stuur_alert_mail(naam, ticker, score, rsi, type="KOOP"):
-    vandaag = time.strftime("%Y-%m-%d")
-    log_key = f"{ticker}_{type}_{vandaag}"
-    if log_key in st.session_state.last_mail_sent:
-        return False
-    try:
-        user = st.secrets["email"]["user"]
-        pw = st.secrets["email"]["password"]
-        receiver = st.secrets["email"]["receiver"]
-        msg = MIMEText(f"🚀 {type} ALERT\n\nBedrijf: {naam}\nTicker: {ticker}\nScore: {score}\nRSI: {rsi}")
-        msg['Subject'] = f"💎 {type} Signaal: {naam}"
-        msg['From'] = user
-        msg['To'] = receiver
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(user, pw)
-            server.sendmail(user, receiver, msg.as_string())
-        st.session_state.last_mail_sent[log_key] = True
-        return True
-    except: return False
-
+# --- 2. DE SCAN FUNCTIE ---
 def scan_aandeel(ticker):
     try:
-        # We halen 1 jaar data op voor de 52-wk stats
         df = yf.download(ticker, period="1y", interval="1d", progress=False, threads=False)
-        if df.empty or len(df) < 20: return None
+        if df.empty or len(df) < 30: return None
         
-        close_prices = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
+        close = df['Close'][ticker] if isinstance(df.columns, pd.MultiIndex) else df['Close']
         
-        # 1. RSI (laatste 14 dagen)
-        delta = close_prices.diff()
-        up = delta.clip(lower=0).rolling(window=14).mean()
-        down = -1 * delta.clip(upper=0).rolling(window=14).mean()
-        rs = up / (down + 0.000001)
-        rsi = 100 - (100 / (1 + rs)).iloc[-1]
+        # Berekeningen
+        rsi_val = 100 - (100 / (1 + (close.diff().clip(lower=0).rolling(14).mean() / (-1 * close.diff().clip(upper=0).rolling(14).mean() + 0.000001)))).iloc[-1]
         
-        # 2. 52-Weken Stats
-        current_price = float(close_prices.iloc[-1])
-        hi_52 = float(close_prices.max())
-        lo_52 = float(close_prices.min())
-        # Hoe ver van de top in % (0% = op de top, 100% = op de bodem)
-        dist_from_high = ((hi_52 - current_price) / (hi_52 - lo_52)) * 100 if hi_52 != lo_52 else 0
+        hi, lo, curr = float(close.max()), float(close.min()), float(close.iloc[-1])
+        dist_top = ((hi - curr) / hi) * 100
         
-        # 3. Dividend & Naam
-        t_obj = yf.Ticker(ticker)
-        info = t_obj.info
-        naam = info.get('longName', ticker)
-        raw_div = info.get('dividendYield', 0) or 0
-        div = float(raw_div) * 100 if float(raw_div) < 1 else float(raw_div)
-        if div > 25: div = div / 100 
+        # KANS SCORE: Hoog als RSI laag is EN afstand tot top groot is
+        # (100-RSI) geeft koopdruk aan, (dist_top * 2) geeft herstelpotentieel aan
+        kans_score = (100 - rsi_val) + (dist_top * 1.5)
         
-        score = (100 - float(rsi)) + (float(div) * 3)
+        status = "💎 STRONG BUY" if kans_score > 85 else "✅ Buy" if kans_score > 70 else "⚖️ Hold" if rsi_val < 70 else "🔥 SELL"
         
         return {
-            "Bedrijf": naam,
-            "Ticker": ticker, 
-            "Prijs": round(current_price, 2),
-            "RSI": round(float(rsi), 1), 
-            "Score": round(float(score), 1),
-            "Afstand Top %": round(dist_from_high, 1),
-            "Div %": round(float(div), 2)
+            "Status": status,
+            "Ticker": ticker,
+            "Kans Score": round(kans_score, 1),
+            "Prijs": round(curr, 2),
+            "RSI": round(rsi_val, 1),
+            "Korting t.o.v. Top": round(dist_top, 1),
         }
     except: return None
 
-# --- 3. SIDEBAR & DATA ---
+# --- 3. DASHBOARD ---
+st.title("🎯 Markt Kansen Heatmap")
+st.subheader("Hoogste verdienkansen op basis van technische uitputting en herstelpotentieel.")
+
 with st.sidebar:
-    st.header("⚙️ Instellingen")
-    watch_input = st.text_area("Watchlist:", "ASML.AS, KO, PG, O, ABBV, SHEL.AS, MO, AD.AS, AAPL, MSFT, GOOGL")
-    port_input = st.text_area("Mijn Bezit:", "KO, ASML.AS")
+    tickers = st.text_area("Tickers (comma separated):", "ASML.AS, KO, GOOGL, NVDA, TSLA, AMZN, NFLX, SHEL.AS, AD.AS, PYPL, DIS")
+    refresh = st.button("🔄 Forceer Update")
 
-st.title("🚀 Holy Grail Dashboard 2026")
+ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+results = []
 
-tickers_w = [t.strip().upper() for t in watch_input.split(",") if t.strip()]
-tickers_p = [t.strip().upper() for t in port_input.split(",") if t.strip()]
+# Voortgangsbalk
+progress_bar = st.progress(0)
+for i, t in enumerate(ticker_list):
+    res = scan_aandeel(t)
+    if res: results.append(res)
+    progress_bar.progress((i + 1) / len(ticker_list))
 
-results_w, results_p = [], []
-status = st.empty()
+if results:
+    df = pd.DataFrame(results).sort_values(by="Kans Score", ascending=False)
 
-with st.spinner('Analyseren...'):
-    for t in tickers_w:
-        status.text(f"🔍 Scan: {t}")
-        res = scan_aandeel(t)
-        if res: results_w.append(res)
-        time.sleep(0.1)
-    for t in tickers_p:
-        status.text(f"📊 Portfolio: {t}")
-        res = scan_aandeel(t)
-        if res: results_p.append(res)
-        time.sleep(0.1)
-status.empty()
+    # --- 4. DE HEATMAP WEERGAVE ---
+    st.data_editor(
+        df,
+        column_config={
+            "Kans Score": st.column_config.ProgressColumn(
+                "Verdienkans Score",
+                help="Gecombineerde score van RSI en Korting",
+                format="%.1f",
+                min_value=0,
+                max_value=150,
+            ),
+            "RSI": st.column_config.NumberColumn(
+                "RSI (Hitte)",
+                help="Lager is beter voor aankoop",
+                format="%.1f"
+            ),
+            "Status": st.column_config.SelectboxColumn(
+                "Actie",
+                options=["💎 STRONG BUY", "✅ Buy", "⚖️ Hold", "🔥 SELL"],
+            )
+        },
+        hide_index=True,
+        use_container_width=True,
+        disabled=True # Maakt het een pure weergave tool
+    )
 
-# --- 4. LAYOUT ---
-if results_w or results_p:
-    c1, c2 = st.columns([2, 1])
-    
-    with c1:
-        st.header("🔍 Scanner")
-        df_w = pd.DataFrame(results_w).sort_values(by="Score", ascending=False)
-        # We voegen kleur toe: Afstand Top (Groen = ver van top/goedkoop, Rood = dichtbij top)
-        st.dataframe(
-            df_w.style.background_gradient(cmap='RdYlGn', subset=['Score'], vmin=35, vmax=85)
-            .background_gradient(cmap='RdYlGn_r', subset=['Afstand Top %'], vmin=0, vmax=50),
-            use_container_width=True
-        )
-        st.caption("ℹ️ **Afstand Top %**: 0% betekent het aandeel staat op zijn hoogste prijs in 52 weken.")
+    # --- 5. TOP 3 HIGHLIGHTS ---
+    st.divider()
+    top_3 = df.head(3)
+    cols = st.columns(3)
+    for idx, row in enumerate(top_3.itertuples()):
+        with cols[idx]:
+            st.metric(label=f"TOP KANS: {row.Ticker}", value=f"{row.Kans Score} Ptn", delta=f"{row.Korting t.o.v. Top}% korting")
+            st.write(f"Huidige Prijs: **€{row.Prijs}**")
 
-    with c2:
-        st.header("⚡ Signalen")
-        for r in results_w:
-            s, dist = r['Score'], r['Afstand Top %']
-            # Slimme koop: Hoge score én niet op de allerhoogste prijs (afstand > 5%)
-            if s >= 88 and dist > 5:
-                st.success(f"💎 **KOOP KANS**: {r['Ticker']} (Score: {s})")
-                stuur_alert_mail(r['Bedrijf'], r['Ticker'], s, r['RSI'], "OPTIMALE KOOP")
-            elif s >= 88 and dist <= 5:
-                st.info(f"🚀 **UITBRAAK?**: {r['Ticker']} op recordhoogte. Pas op.")
-        
-        st.divider()
-        for r in results_p:
-            if r['RSI'] >= 75:
-                st.warning(f"🔥 **VERKOOP**: {r['Ticker']} (Oververhit)")
-
-# --- 5. TAX ---
-st.divider()
-col_t1, col_t2 = st.columns(2)
-with col_t1:
-    st.header("💰 Tax Calculator 2026")
-    vermogen = st.number_input("Totaal Vermogen (€):", value=120000)
-    vrijstelling = 114000 # Partner-route
-    taks = max(0, vermogen - vrijstelling) * 0.0212
-    st.metric("Box 3 Belasting", f"€{taks:,.0f}")
+else:
+    st.error("Kon geen data ophalen. Controleer je internet of tickers.")
