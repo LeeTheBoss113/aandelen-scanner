@@ -99,12 +99,13 @@ if results:
     )
 
     st.divider()
-    st.subheader("🏆 Top 3")
-    top_3 = df.head(3)
-    cols = st.columns(3)
+    st.subheader("🏆 Top 15")
+    top_3 = df.head(15)
+    cols = st.columns(15)
     for idx, row in enumerate(top_3.itertuples()):
         with cols[idx]:
             st.metric(label=row.Ticker, value=f"{row.Kans_Score} Ptn", delta=f"-{row.Korting_Top}%")
             st.write(f"Status: **{row.Status}**")
 else:
     st.warning("Er kon geen data worden opgehaald. Probeer de 'Forceer Herstart' knop in de sidebar of check of je tickers (bijv. AAPL) correct zijn.")
+
