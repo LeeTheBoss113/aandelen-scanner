@@ -11,7 +11,7 @@ st.set_page_config(page_title="Holy Grail Sector Hub", layout="wide")
 
 # VUL HIER JE GEGEVENS IN
 EMAIL_SENDER = "jouw-email@gmail.com"
-EMAIL_PASSWORD = "jouw-app-wachtwoord" # De 16 letters van Google zonder spaties
+EMAIL_PASSWORD = "jouw-app-wachtwoord" 
 EMAIL_RECEIVER = "ontvanger-email@gmail.com"
 LOG_FILE = "mail_log.txt"
 
@@ -24,7 +24,7 @@ SECTOREN = {
     "🧪 Recovery": ["PYPL", "BABA", "INTC", "CRM", "SQ", "SHOP"]
 }
 
-# --- 3. MAIL FUNCTIE (Aangepast naar Poort 587) ---
+# --- 3. MAIL FUNCTIE ---
 def stuur_dagelijkse_mail(strong_buys):
     vandaag = str(date.today())
     if os.path.exists(LOG_FILE):
@@ -42,4 +42,18 @@ def stuur_dagelijkse_mail(strong_buys):
     msg['To'] = EMAIL_RECEIVER
 
     try:
-        # Geb
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls() 
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        server.quit()
+        with open(LOG_FILE, "w") as f:
+            f.write(vandaag)
+        st.sidebar.success("✅ Mail succesvol verzonden!")
+    except Exception as e:
+        st.sidebar.error(f"Mail fout: {e}")
+
+# --- 4. DATA FUNCTIE ---
+def scan_aandeel(ticker, sector):
+    try:
+        df = yf.
