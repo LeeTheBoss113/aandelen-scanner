@@ -7,10 +7,11 @@ from email.mime.text import MIMEText
 
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="Holy Grail Sector Hub", layout="wide")
+
+# Pas deze aan indien nodig
 EMAIL_SENDER = "jouw-email@gmail.com"
 EMAIL_PASSWORD = "jouw-app-wachtwoord" 
 EMAIL_RECEIVER = "ontvanger-email@gmail.com"
-LOG_FILE = "mail_log.txt"
 
 SECTOREN = {
     "💻 Tech": ["NVDA", "MSFT", "GOOGL", "AMZN", "AAPL", "TSLA", "ASML.AS"],
@@ -33,7 +34,6 @@ def scan_aandeel(ticker, sector):
         sma63 = close.rolling(63).mean().iloc[-1]
         sma252 = close.rolling(252).mean().iloc[-1]
         
-        # RSI & Korting
         delta = close.diff()
         up = delta.clip(lower=0).rolling(14).mean()
         down = -1 * delta.clip(upper=0).rolling(14).mean()
@@ -55,8 +55,7 @@ def scan_aandeel(ticker, sector):
         res["Status"] = status
         res["Trend3M"] = "✅" if curr > sma63 else "❌"
         res["Trend1J"] = "✅" if curr > sma252 else "❌"
-        # We slaan de laatste 126 dagen (± 6 maanden) op voor de grafiek
-        res["History"] = close.tail(126)
+        res["History"] = close.tail(126) # 6 maanden voor grafiek
         return res
     except: 
         return None
@@ -65,28 +64,4 @@ def scan_aandeel(ticker, sector):
 st.title("🎯 Holy Grail: Sector Dashboard")
 all_res = []
 ticker_items = [(t, s) for s, ts in SECTOREN.items() for t in ts]
-pb = st.progress(0)
-
-for i, (t, s) in enumerate(ticker_items):
-    res = scan_aandeel(t, s)
-    if res: all_res.append(res)
-    pb.progress((i + 1) / len(ticker_items))
-pb.empty()
-
-if all_res:
-    df = pd.DataFrame(all_res).sort_values(by="Score", ascending=False).reset_index(drop=True)
-    
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        st.subheader("📊 Lijst")
-        # We tonen de geschiedenis niet in de tabel, dat is te zwaar
-        st.dataframe(df.drop(columns=["History"]), hide_index=True, use_container_width=True)
-        
-    with c2:
-        st.subheader("🏆 Sector Top 3 + Trend (6M)")
-        for sec in SECTOREN.keys():
-            sec_df = df[df['Sector'] == sec].head(3)
-            if not sec_df.empty:
-                st.markdown(f"#### {sec}")
-                cols = st.columns(len(sec_df))
-                for idx, row in enumerate(sec_df.itertuples()):
+pb = st
