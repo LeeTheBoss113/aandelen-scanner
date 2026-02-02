@@ -108,5 +108,6 @@ if all_results:
                 "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=150, format="%.0f"),
                 "Korting": st.column_config.NumberColumn("Korting %", format="%.1f%%"),
                 "Prijs": st.column_config.NumberColumn("Koers", format="€%.2f"),
-                "Boven_3M": "3M Trend", }
+                "Boven_3M": "3M Trend", 
+
 
