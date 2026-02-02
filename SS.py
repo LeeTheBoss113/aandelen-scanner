@@ -49,4 +49,73 @@ def stuur_dagelijkse_mail(strong_buys):
         server.quit()
         with open(LOG_FILE, "w") as f:
             f.write(vandaag)
-        st.sidebar.success("✅
+        st.sidebar.success("✅ Mail succesvol verzonden!")
+    except Exception as e:
+        st.sidebar.error(f"Mail fout: {e}")
+
+# --- 4. SCANNER LOGICA ---
+def scan_aandeel(ticker, sector):
+    try:
+        df = yf.download(ticker, period="2y", interval="1d", progress=False)
+        if df is None or df.empty or len(df) < 252:
+            return None
+        
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        close = df['Close']
+        curr = float(close.iloc[-1])
+        
+        # Trends
+        sma_63 = close.rolling(63).mean().iloc[-1]
+        sma_252 = close.rolling(252).mean().iloc[-1]
+        
+        # RSI 14
+        delta = close.diff()
+        up = delta.clip(lower=0).rolling(14).mean()
+        down = -1 * delta.clip(upper=0).rolling(14).mean()
+        rsi = 100 - (100 / (1 + (up / (down + 0.000001)).iloc[-1]))
+        
+        # Korting
+        hi = float(close.tail(252).max()) 
+        dist_top = ((hi - curr) / hi) * 100
+        
+        # Score
+        score = (100 - float(rsi)) + (dist_top * 1.5)
+        if curr > sma_252: score += 10
+        if curr > sma_63: score += 5
+        
+        # Status
+        status = "⚖️ Hold"
+        if score > 100 and curr > sma_252: status = "💎 STRONG BUY"
+        elif score > 80: status = "✅ Buy"
+        elif rsi > 75: status = "🔥 SELL"
+            
+        return {
+            "Sector": sector, "Ticker": ticker, "Score": round(float(score), 1),
+            "Prijs": round(float(curr), 2), "Status": status,
+            "Trend3M": "✅" if curr > sma_63 else "❌",
+            "Trend1J": "✅" if curr > sma_252 else "❌"
+        }
+    except Exception:
+        return None
+
+# --- 5. DASHBOARD & SORTERING ---
+st.title("🎯 Holy Grail: Sector Dashboard")
+
+all_results = []
+ticker_items = [(t, s) for s, ts in SECTOREN.items() for t in ts]
+progress_bar = st.progress(0)
+
+for i, (t, s) in enumerate(ticker_items):
+    res = scan_aandeel(t, s)
+    if res:
+        all_results.append(res)
+    progress_bar.progress((i + 1) / len(ticker_items))
+
+if all_results:
+    # --- DE SORTERING ---
+    # We sorteren hier de HELE lijst op Score (hoog naar laag)
+    df_all = pd.DataFrame(all_results).sort_values(by="Score", ascending=False).reset_index(drop=True)
+    
+    # Mail verzenden voor diam
