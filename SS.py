@@ -9,7 +9,6 @@ from email.mime.text import MIMEText
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="Holy Grail Sector Hub", layout="wide")
 
-# VUL DEZE GEGEVENS IN
 EMAIL_SENDER = "jouw-email@gmail.com"
 EMAIL_PASSWORD = "jouw-app-wachtwoord" 
 EMAIL_RECEIVER = "ontvanger-email@gmail.com"
@@ -26,32 +25,32 @@ SECTOREN = {
 
 # --- 3. MAIL FUNCTIE ---
 def stuur_dagelijkse_mail(strong_buys):
-    vandaag = str(date.today())
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "r") as f:
-            if f.read().strip() == vandaag:
-                return
-    
-    inhoud = f"Holy Grail Scanner Update ({vandaag}):\n\n"
-    for sb in strong_buys:
-        inhoud += f"💎 {sb['Ticker']} | Score: {sb['Score']} | Trend: {sb['Trend1J']}\n"
-    
-    msg = MIMEText(inhoud)
-    msg['Subject'] = f"🎯 Holy Grail Alert: {len(strong_buys)} Strong Buys"
-    msg['From'] = EMAIL_SENDER
-    msg['To'] = EMAIL_RECEIVER
-
     try:
+        vandaag = str(date.today())
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, "r") as f:
+                if f.read().strip() == vandaag:
+                    return
+        
+        inhoud = f"Holy Grail Scanner Update ({vandaag}):\n\n"
+        for sb in strong_buys:
+            inhoud += f"💎 {sb['Ticker']} | Score: {sb['Score']} | 1J Trend: {sb['Trend1J']}\n"
+        
+        msg = MIMEText(inhoud)
+        msg['Subject'] = f"🎯 Holy Grail Alert: {len(strong_buys)} Strong Buys"
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = EMAIL_RECEIVER
+
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
         server.quit()
+        
         with open(LOG_FILE, "w") as f:
             f.write(vandaag)
-        st.sidebar.success("✅ Mail succesvol verzonden!")
-    except Exception as e:
-        st.sidebar.error(f"Mail fout: {e}")
+    except:
+        pass # Voorkom dat mail-fouten het dashboard blokkeren
 
 # --- 4. SCANNER LOGICA ---
 def scan_aandeel(ticker, sector):
@@ -65,27 +64,20 @@ def scan_aandeel(ticker, sector):
             
         close = df['Close']
         curr = float(close.iloc[-1])
-        
-        # Trends
         sma_63 = close.rolling(63).mean().iloc[-1]
         sma_252 = close.rolling(252).mean().iloc[-1]
         
-        # RSI 14
         delta = close.diff()
         up = delta.clip(lower=0).rolling(14).mean()
         down = -1 * delta.clip(upper=0).rolling(14).mean()
         rsi = 100 - (100 / (1 + (up / (down + 0.000001)).iloc[-1]))
-        
-        # Korting
         hi = float(close.tail(252).max()) 
         dist_top = ((hi - curr) / hi) * 100
         
-        # Score
         score = (100 - float(rsi)) + (dist_top * 1.5)
         if curr > sma_252: score += 10
         if curr > sma_63: score += 5
         
-        # Status
         status = "⚖️ Hold"
         if score > 100 and curr > sma_252: status = "💎 STRONG BUY"
         elif score > 80: status = "✅ Buy"
@@ -97,10 +89,10 @@ def scan_aandeel(ticker, sector):
             "Trend3M": "✅" if curr > sma_63 else "❌",
             "Trend1J": "✅" if curr > sma_252 else "❌"
         }
-    except Exception:
+    except:
         return None
 
-# --- 5. DASHBOARD & SORTERING ---
+# --- 5. UI & DISPLAY ---
 st.title("🎯 Holy Grail: Sector Dashboard")
 
 all_results = []
@@ -113,9 +105,8 @@ for i, (t, s) in enumerate(ticker_items):
         all_results.append(res)
     progress_bar.progress((i + 1) / len(ticker_items))
 
+# Haal de balk weg na laden
+progress_bar.empty()
+
 if all_results:
-    # --- DE SORTERING ---
-    # We sorteren hier de HELE lijst op Score (hoog naar laag)
-    df_all = pd.DataFrame(all_results).sort_values(by="Score", ascending=False).reset_index(drop=True)
-    
-    # Mail verzenden voor diam
+    df_all = pd.DataFrame(all_results).sort
