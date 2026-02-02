@@ -34,7 +34,7 @@ def stuur_dagelijkse_mail(strong_buys):
     
     inhoud = f"Holy Grail Scanner Update ({vandaag}):\n\n"
     for sb in strong_buys:
-        inhoud += f"💎 {sb['Ticker']} | Score: {sb['Score']} | 1J Trend: {sb['Trend1J']}\n"
+        inhoud += f"💎 {sb['Ticker']} | Score: {sb['Score']} | Trend: {sb['Trend1J']}\n"
     
     msg = MIMEText(inhoud)
     msg['Subject'] = f"🎯 Holy Grail Alert: {len(strong_buys)} Strong Buys"
@@ -49,25 +49,4 @@ def stuur_dagelijkse_mail(strong_buys):
         server.quit()
         with open(LOG_FILE, "w") as f:
             f.write(vandaag)
-        st.sidebar.success("✅ Mail succesvol verzonden!")
-    except Exception as e:
-        st.sidebar.error(f"Mail fout: {e}")
-
-# --- 4. SCANNER LOGICA ---
-def scan_aandeel(ticker, sector):
-    try:
-        # Hier zat de fout: yf.download moet volledig op één regel staan
-        df = yf.download(ticker, period="2y", interval="1d", progress=False)
-        
-        if df is None or df.empty or len(df) < 252:
-            return None
-        
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-            
-        close = df['Close']
-        curr = float(close.iloc[-1])
-        
-        # Voortschrijdende gemiddelden voor trend-analyse
-        sma_63 = close.rolling(63).mean().iloc[-1]
-        sma_252 = close.rolling(252).mean().iloc[-1]
+        st.sidebar.success("✅
