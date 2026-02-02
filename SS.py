@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="Holy Grail Sector Hub", layout="wide")
 
-# VUL HIER JE GEGEVENS IN
+# VUL DEZE GEGEVENS IN
 EMAIL_SENDER = "jouw-email@gmail.com"
 EMAIL_PASSWORD = "jouw-app-wachtwoord" 
 EMAIL_RECEIVER = "ontvanger-email@gmail.com"
@@ -31,7 +31,7 @@ def stuur_dagelijkse_mail(strong_buys):
         with open(LOG_FILE, "r") as f:
             if f.read().strip() == vandaag:
                 return
-
+    
     inhoud = f"Holy Grail Scanner Update ({vandaag}):\n\n"
     for sb in strong_buys:
         inhoud += f"💎 {sb['Ticker']} | Score: {sb['Score']} | 1J Trend: {sb['Trend1J']}\n"
@@ -43,7 +43,7 @@ def stuur_dagelijkse_mail(strong_buys):
 
     try:
         server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls() 
+        server.starttls()
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
         server.quit()
@@ -53,7 +53,21 @@ def stuur_dagelijkse_mail(strong_buys):
     except Exception as e:
         st.sidebar.error(f"Mail fout: {e}")
 
-# --- 4. DATA FUNCTIE ---
+# --- 4. SCANNER LOGICA ---
 def scan_aandeel(ticker, sector):
     try:
-        df = yf.
+        # Hier zat de fout: yf.download moet volledig op één regel staan
+        df = yf.download(ticker, period="2y", interval="1d", progress=False)
+        
+        if df is None or df.empty or len(df) < 252:
+            return None
+        
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        close = df['Close']
+        curr = float(close.iloc[-1])
+        
+        # Voortschrijdende gemiddelden voor trend-analyse
+        sma_63 = close.rolling(63).mean().iloc[-1]
+        sma_252 = close.rolling(252).mean().iloc[-1]
