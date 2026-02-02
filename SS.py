@@ -123,5 +123,9 @@ if all_results:
             card_cols = st.columns(3)
             for idx, row in enumerate(sec_df.itertuples()):
                 with card_cols[idx]:
-                    with st.container(border=True):
-                        st.metric(label=row.Ticker, value=f"{row.Score} Ptn", delta=f"-{row.Korting
+    with st.container(border=True):
+        # Fix: Het haakje en de quote onderaan waren niet gesloten
+        st.metric(label=row.Ticker, value=f"{row.Score} Ptn", delta=f"-{row.Korting}%")
+        
+        # Visuele trend indicatoren
+        st.markdown(f"Trend: 3M:{row.Boven_3M} | 1J:{row.Boven_1J}")
