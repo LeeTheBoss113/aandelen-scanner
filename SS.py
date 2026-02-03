@@ -41,17 +41,17 @@ def analyze_logic(df, info):
     ath = float(np.max(closes))
     discount = ((ath - current_price) / ath) * 100
     
-    # Dividend & Risico
+    # Dividend & Risico data veilig ophalen
     div_yield = info.get('dividendYield', 0)
     div_pct = (div_yield * 100) if div_yield else 0
     beta = info.get('beta', 1.0) if info.get('beta') else 1.0
     
-    # Techniek
+    # Technische data
     rsi = float(df['RSI'].fillna(50).values[-1])
     ma_1y = float(np.mean(closes))
     trend_1j = "✅" if current_price > ma_1y else "❌"
     
-    # Advies Logica
+    # ADVIES LOGICA (Indentatie hersteld)
     if trend_1j == "✅" and rsi < 60 and discount > 2:
         advies = "🌟 NU KOPEN"
     elif trend_1j == "✅" and rsi > 70:
