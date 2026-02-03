@@ -6,117 +6,120 @@ import plotly.graph_objects as go
 import numpy as np
 
 # 1. Pagina instellingen
-st.set_page_config(page_title="CFD Sector Analyzer", layout="wide")
+st.set_page_config(page_title="Safe Dividend Scanner", layout="wide")
 
-st.title("📈 CFD Sector & Trend Analyzer")
+st.title("🛡️ Stabiele Dividend & Risico Scanner")
+st.markdown("Focus op lage volatiliteit (Beta < 1) en stabiele inkomsten.")
 
-# 2. Definieer je CFD's en Sectoren
+# 2. Selectie van stabiele Dividend Aristocrats / Strong Yielders
 symbols_dict = {
-    'AAPL': 'Tech', 
-    'MSFT': 'Tech', 
-    'NVDA': 'Semi-conductors',
-    'GC=F': 'Commodities (Gold)', 
-    'CL=F': 'Energy (Oil)',
-    'TSLA': 'Automotive', 
-    'EURUSD=X': 'Forex',
-    '^GSPC': 'Indices (S&P500)'
+    'KO': 'Consumptie (Coca-Cola)', 
+    'PEP': 'Consumptie (Pepsi)', 
+    'JNJ': 'Healthcare (J&J)',
+    'O': 'Vastgoed (Realty Income)', 
+    'PG': 'Consumptie (P&G)',
+    'ABBV': 'Farma (AbbVie)',
+    'CVX': 'Energie (Chevron)',
+    'MAIN': 'Financieel (Main St Capital)',
+    'VUSA.AS': 'Index (S&P 500 Dividend)'
 }
 
-# 3. Legenda direct in het hoofdscherm
-st.markdown("### 📋 Trend Legenda & Betekenis")
-L1, L2, L3, L4 = st.columns(4)
-L1.info("🟦 **Herstel (✅❌)**\n\n6m > Gem, 1j < Gem")
-L2.success("🟩 **Bullish (✅✅)**\n\n6m > Gem, 1j > Gem")
-L3.warning("🟨 **Correctie (❌✅)**\n\n6m < Gem, 1j > Gem")
-L4.error("🟥 **Bearish (❌❌)**\n\n6m < Gem, 1j < Gem")
+# 3. Legenda
+st.markdown("### 📋 Dashboard Legenda")
+L1, L2, L3 = st.columns(3)
+L1.success("🟩 **Bullish:** Veilig herstel/groei. Prijs boven 6m en 1j gemiddelde.")
+L2.warning("🟨 **Correctie:** Lange termijn OK, maar nu een dip (mogelijk koopmoment).")
+L3.info("ℹ️ **Beta:** < 1.0 is veiliger dan de markt. > 1.0 is beweeglijker.")
 
 st.divider()
 
-# 4. Data Functies met extra foutafhandeling
+# 4. Data Functies
 @st.cache_data(ttl=3600)
-def get_market_data(symbol):
+def get_data_and_info(symbol):
     try:
-        df = yf.download(symbol, period="1y", interval="1d")
-        if df.empty: return None
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1y")
+        info = ticker.info
         
-        # Sla de MultiIndex plat
+        if df.empty: return None, None
+        
+        # MultiIndex fix
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
-        # RSI Berekenen
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        return df
-    except Exception:
-        return None
+        return df, info
+    except:
+        return None, None
 
-def analyze_trends(df):
-    # Pak de waarden en zet ze om naar een platte lijst van getallen
+def analyze_stock(df, info):
     closes = df['Close'].values.flatten()
     current_price = float(closes[-1])
     
-    # Gemiddeldes (6m = 126 dagen, 1j = totaal)
+    # Dividend & Risico data
+    div_yield = info.get('dividendYield', 0)
+    div_pct = (div_yield * 100) if div_yield else 0
+    beta = info.get('beta', 1.0)
+    
+    # Trend logica
     ma_6m = float(np.mean(closes[-126:])) if len(closes) >= 126 else float(np.mean(closes))
     ma_1y = float(np.mean(closes))
     
-    # RSI veilig uitlezen (pak de laatste waarde die geen NaN is)
-    rsi_series = df['RSI'].fillna(50).values.flatten()
-    current_rsi = float(rsi_series[-1])
-    
-    # Trend logica
     s_6m = "✅" if current_price > ma_6m else "❌"
     s_1y = "✅" if current_price > ma_1y else "❌"
     
     if s_6m == "✅" and s_1y == "✅": status = "Bullish"
     elif s_6m == "❌" and s_1y == "✅": status = "Correctie"
-    elif s_6m == "✅" and s_1y == "❌": status = "Herstel"
-    else: status = "Bearish"
+    else: status = "Lage Momentum"
     
-    return s_6m, s_1y, status, round(current_price, 2), round(current_rsi, 2)
+    return s_6m, s_1y, status, round(current_price, 2), round(div_pct, 2), round(beta, 2)
 
-# 5. Data Verwerking
+# 5. Verwerking
 data_rows = []
 for sym, sector in symbols_dict.items():
-    raw_data = get_market_data(sym)
-    if raw_data is not None and len(raw_data) > 0:
-        try:
-            s6, s1, stat, price, rsi = analyze_trends(raw_data)
-            data_rows.append({
-                "Ticker": sym, "Sector": sector, "Prijs": price,
-                "RSI": rsi, "6 Maanden": s6, "1 Jaar": s1, "Trend Status": stat
-            })
-        except Exception as e:
-            continue
+    df, info = get_data_and_info(sym)
+    if df is not None:
+        s6, s1, stat, price, div, beta = analyze_stock(df, info)
+        data_rows.append({
+            "Ticker": sym,
+            "Sector": sector,
+            "Prijs": price,
+            "Div %": div,
+            "Risico (Beta)": beta,
+            "6m": s6,
+            "1j": s1,
+            "Trend Status": stat
+        })
 
 if data_rows:
     df_final = pd.DataFrame(data_rows)
+    # Sorteren op Dividend (hoogste eerst)
+    df_final = df_final.sort_values(by="Div %", ascending=False)
 
     # 6. Kleurfunctie
     def color_rows(row):
-        colors = {
-            'Bullish': 'background-color: rgba(40, 167, 69, 0.3)',
-            'Bearish': 'background-color: rgba(220, 53, 69, 0.3)',
-            'Correctie': 'background-color: rgba(255, 193, 7, 0.3)',
-            'Herstel': 'background-color: rgba(23, 162, 184, 0.3)'
-        }
-        return [colors.get(row['Trend Status'], '')] * len(row)
+        if row['Trend Status'] == 'Bullish': return ['background-color: rgba(40, 167, 69, 0.2)'] * len(row)
+        if row['Trend Status'] == 'Correctie': return ['background-color: rgba(255, 193, 7, 0.2)'] * len(row)
+        return [''] * len(row)
 
-    # 7. Tabel
-    st.subheader("📊 Market Heatmap")
+    # 7. Weergave Tabel
+    st.subheader("💰 Dividend Overzicht (Gesorteerd op opbrengst)")
     st.dataframe(df_final.style.apply(color_rows, axis=1), use_container_width=True)
 
-    # 8. Grafiek
+    # 8. Grafiek met Risico-analyse
     st.divider()
-    selected_symbol = st.selectbox("Selecteer voor grafiek", df_final['Ticker'].tolist())
+    sel = st.selectbox("Bekijk grafiek van:", df_final['Ticker'].tolist())
     
-    if selected_symbol:
-        plot_data = get_market_data(selected_symbol)
-        if plot_data is not None:
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(
-                x=plot_data.index, open=plot_data['Open'], high=plot_data['High'],
-                low=plot_data['Low'], close=plot_data['Close'], name=selected_symbol
-            ))
-            fig.update_layout(height=500, template="plotly_dark", xaxis_rangeslider_visible=True)
-            st.plotly_chart(fig, use_container_width=True)
+    if sel:
+        hist_df, _ = get_data_and_info(sel)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name="Koers", line=dict(color='#17a2b8')))
+        
+        # Voeg voortschrijdend gemiddelde toe voor visuele trend
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'].rolling(50).mean(), 
+                                 name="50d Gemiddelde", line=dict(color='orange', dash='dot')))
+        
+        fig.update_layout(title=f"Trend Analyse: {sel}", height=500, template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+
 else:
-    st.warning("Geen data gevonden. Controleer de tickers of de verbinding.")
+    st.error("Kon geen data laden. Controleer je internet of tickers.")
