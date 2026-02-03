@@ -45,20 +45,33 @@ def get_market_data(symbol):
         return None
 
 def analyze_trends(df):
-    current_price = df['Close'].iloc[-1]
-    # Gemiddelde 6m (126 trading days) en 1j (252 trading days)
-    ma_6m = df['Close'].tail(126).mean()
-    ma_1y = df['Close'].mean()
+    # Fix voor MultiIndex data van yfinance: pak de 'Close' kolom en maak deze 'plat'
+    close_prices = df['Close'].values.flatten()
+    current_price = float(close_prices[-1])
     
+    # Bereken gemiddeldes op de platte data
+    # 6m is ongeveer 126 dagen, 1j is de hele dataset (252 dagen)
+    ma_6m = float(pd.Series(close_prices).tail(126).mean())
+    ma_1y = float(pd.Series(close_prices).mean())
+    
+    # RSI veilig ophalen (voorkom MultiIndex errors)
+    rsi_values = df['RSI'].values.flatten()
+    current_rsi = float(rsi_values[-1])
+    
+    # De logica vergelijking
     s_6m = "✅" if current_price > ma_6m else "❌"
     s_1y = "✅" if current_price > ma_1y else "❌"
     
-    if s_6m == "✅" and s_1y == "✅": status = "Bullish"
-    elif s_6m == "❌" and s_1y == "✅": status = "Correctie"
-    elif s_6m == "✅" and s_1y == "❌": status = "Herstel"
-    else: status = "Bearish"
+    if s_6m == "✅" and s_1y == "✅": 
+        status = "Bullish"
+    elif s_6m == "❌" and s_1y == "✅": 
+        status = "Correctie"
+    elif s_6m == "✅" and s_1y == "❌": 
+        status = "Herstel"
+    else: 
+        status = "Bearish"
     
-    return s_6m, s_1y, status, round(float(current_price), 2), round(float(df['RSI'].iloc[-1]), 2)
+    return s_6m, s_1y, status, round(current_price, 2), round(current_rsi, 2)
 
 # 5. Data Verzamelen voor de tabel
 data_rows = []
@@ -114,3 +127,4 @@ if selected_symbol:
 
     fig.update_layout(height=500, template="plotly_dark", xaxis_rangeslider_visible=True)
     st.plotly_chart(fig, use_container_width=True)
+
