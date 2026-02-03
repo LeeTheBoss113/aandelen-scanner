@@ -1,60 +1,66 @@
 import streamlit as st
+import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
-import plotly.graph_objects as go
 
-st.set_page_config(layout="wide")
-st.title("📈 CFD Sector & RSI Analyzer")
+# 1. Configuratie en Sectoren
+symbols_dict = {
+    'AAPL': 'Tech', 'MSFT': 'Tech', 
+    'GC=F': 'Commodities', 'CL=F': 'Energy',
+    'TSLA': 'Consumer', 'EURUSD=X': 'Forex'
+}
 
-# Voorbeeldlijst van CFD symbols (pas dit aan naar jouw brokers symbols)
-symbols = ['AAPL', 'TSLA', 'MSFT', 'NVDA', 'GC=F', 'CL=F'] 
-
-def get_data(symbol):
+def get_detailed_status(symbol):
     df = yf.download(symbol, period="1y", interval="1d")
-    # RSI berekenen (meestal op 14 dagen)
-    df['RSI'] = ta.rsi(df['Close'], length=14)
-    return df
-
-# Layout kolommen
-col1, col2 = st.columns([1, 2])
-
-with col1:
-    st.subheader("Top Performers")
-    for s in symbols:
-        data = get_data(s)
-        current_rsi = data['RSI'].iloc[-1]
-        
-        # Kleurcode op basis van RSI
-        color = "green" if current_rsi < 30 else "red" if current_rsi > 70 else "white"
-        st.markdown(f"**{s}**: RSI: <span style='color:{color}'>{current_rsi:.2f}</span>", unsafe_allow_html=True)
-
-with col2:
-    selected_symbol = st.selectbox("Selecteer CFD voor analyse", symbols)
-    df = get_data(selected_symbol)
-
-    # Bereken Bollinger Bands voor visuele 'beweging'
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['Upper'] = df['MA20'] + (df['Close'].rolling(window=20).std() * 2)
-    df['Lower'] = df['MA20'] - (df['Close'].rolling(window=20).std() * 2)
-
-    fig = go.Figure()
-
-    # Candlestick chart
-    fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df['Open'], high=df['High'],
-        low=df['Low'], close=df['Close'],
-        name="Market Movement"
-    ))
-
-    # Bollinger Bands (deze laten de volatiliteit zien)
-    fig.add_trace(go.Scatter(x=df.index, y=df['Upper'], line=dict(color='rgba(173, 216, 230, 0.5)'), name="Upper Band"))
-    fig.add_trace(go.Scatter(x=df.index, y=df['Lower'], line=dict(color='rgba(173, 216, 230, 0.5)'), fill='tonexty', name="Lower Band"))
-
-    fig.update_layout(
-        title=f"Volatiliteit Analyse: {selected_symbol}",
-        xaxis_rangeslider_visible=True, # Hiermee kun je onderin schuiven tussen 6m en 1j
-        height=600
-    )
+    current_price = df['Close'].iloc[-1]
     
-    st.plotly_chart(fig, use_container_width=True)
+    # Bereken gemiddeldes (252 handelsdagen in een jaar, 126 in 6 mnd)
+    ma_6m = df['Close'].tail(126).mean()
+    ma_1y = df['Close'].mean()
+    
+    s_6m = "✅" if current_price > ma_6m else "❌"
+    s_1y = "✅" if current_price > ma_1y else "❌"
+    
+    # Bepaal status tekst
+    if s_6m == "✅" and s_1y == "✅": status = "Bullish"
+    elif s_6m == "❌" and s_1y == "✅": status = "Correctie"
+    elif s_6m == "✅" and s_1y == "❌": status = "Herstel"
+    else: status = "Bearish"
+    
+    return s_6m, s_1y, status, round(current_price, 2)
+
+# 2. Data Verzamelen
+data_rows = []
+for sym, sector in symbols_dict.items():
+    s6, s1, stat, price = get_detailed_status(sym)
+    data_rows.append({
+        "Ticker": sym,
+        "Sector": sector,
+        "Prijs": price,
+        "6 Maanden": s6,
+        "1 Jaar": s1,
+        "Trend": stat
+    })
+
+df_final = pd.DataFrame(data_rows)
+
+# 3. Kleurfunctie voor de tabel
+def color_rows(row):
+    if row['Trend'] == 'Bullish': return ['background-color: #d4edda'] * len(row) # Groen
+    if row['Trend'] == 'Bearish': return ['background-color: #f8d7da'] * len(row) # Rood
+    if row['Trend'] == 'Correctie': return ['background-color: #fff3cd'] * len(row) # Geel
+    if row['Trend'] == 'Herstel': return ['background-color: #d1ecf1'] * len(row) # Blauw
+    return [''] * len(row)
+
+# 4. Streamlit Display
+st.subheader("🔥 Sector Risk & Trend Heatmap")
+st.dataframe(df_final.style.apply(color_rows, axis=1), use_container_width=True)
+
+# 5. Legenda (onder de tabel)
+st.info("""
+**Legenda:**
+- 🟩 **Bullish (✅✅):** Alles op groen. Momentum is sterk.
+- 🟨 **Correctie (❌✅):** Lange termijn trend is nog stijgend, maar korte termijn zwakte.
+- 🟦 **Herstel (✅❌):** Krabbelt op uit een dal, maar lange termijn nog negatief.
+- 🟥 **Bearish (❌❌):** Vermijden of defensief positioneren.
+""")
