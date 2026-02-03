@@ -56,11 +56,23 @@ def color_rows(row):
 st.subheader("🔥 Sector Risk & Trend Heatmap")
 st.dataframe(df_final.style.apply(color_rows, axis=1), use_container_width=True)
 
-# 5. Legenda (onder de tabel)
-st.info("""
-**Legenda:**
-- 🟩 **Bullish (✅✅):** Alles op groen. Momentum is sterk.
-- 🟨 **Correctie (❌✅):** Lange termijn trend is nog stijgend, maar korte termijn zwakte.
-- 🟦 **Herstel (✅❌):** Krabbelt op uit een dal, maar lange termijn nog negatief.
-- 🟥 **Bearish (❌❌):** Vermijden of defensief positioneren.
-""")
+# --- LEGENDA IN DE SIDEBAR ---
+with st.sidebar:
+    st.header("🔍 Trend Legenda")
+    
+    # Gebruik kolommen in de sidebar voor een compacte, visuele uitleg
+    st.success("**Bullish (✅✅)**\n\nSterke trend. Momentum is positief op 6m en 1jr.")
+    st.warning("**Correctie (❌✅)**\n\nLange termijn stijgend, maar korte termijn dip.")
+    st.info("**Herstel (✅❌)**\n\nKorte termijn veert op, maar 1-jaars trend nog negatief.")
+    st.error("**Bearish (❌❌)**\n\nNegatieve trend. Hoog risico, vermijden.")
+    
+    st.divider()
+    st.markdown("""
+    **Focus op RSI:**
+    - < 30: Oversold (Koopkans?)
+    - > 70: Overbought (Winst pakken?)
+    """, unsafe_allow_html=True)
+
+# --- DE TABEL IN HET HOOFDSCHERM ---
+st.subheader("🔥 Market Status & Sector Spread")
+st.dataframe(df_final.style.apply(color_rows, axis=1), use_container_width=True)
