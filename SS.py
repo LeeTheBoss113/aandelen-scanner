@@ -47,13 +47,15 @@ def analyze_logic(df, info):
     beta = info.get('beta', 1.0) if info.get('beta') else 1.0
     
     # Technische data
-    rsi = float(df['RSI'].fillna(50).values[-1])
+    rsi_vals = df['RSI'].fillna(50).values
+    rsi = float(rsi_vals[-1])
     ma_1y = float(np.mean(closes))
     trend_1j = "✅" if current_price > ma_1y else "❌"
     
-    # ADVIES LOGICA (Indentatie hersteld)
+    # ADVIES LOGICA (Indents hersteld)
     if trend_1j == "✅" and rsi < 60 and discount > 2:
         advies = "🌟 NU KOPEN"
     elif trend_1j == "✅" and rsi > 70:
         advies = "⚠️ OVERVERHIT"
     elif trend_1j == "❌":
+        advies = "😴 GEEN
