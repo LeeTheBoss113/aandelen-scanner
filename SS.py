@@ -9,31 +9,39 @@ import numpy as np
 st.set_page_config(page_title="Safe Dividend Scanner", layout="wide")
 st.title("🛡️ Slimme Dividend Scanner: Koopsignalen & Risico")
 
-# 2. De selectie: Stabiele dividendbetalers
+# 2. De selectie (Lijst ingekort voor snellere check)
 symbols_dict = {
-    'KO': 'Consumptie (Coca-Cola)', 
-    'PEP': 'Consumptie (Pepsi)', 
-    'JNJ': 'Healthcare (J&J)', 
-    'O': 'Vastgoed (Realty Income)', 
-    'PG': 'Consumptie (P&G)', 
-    'ABBV': 'Farma (AbbVie)',
-    'CVX': 'Energie (Chevron)', 
-    'VUSA.AS': 'Index (S&P 500 Dividend)'
+    'KO': 'Coca-Cola', 
+    'PEP': 'Pepsi', 
+    'JNJ': 'Healthcare', 
+    'O': 'Realty Income', 
+    'PG': 'P&G', 
+    'ABBV': 'AbbVie'
 }
 
-# 3. Data Functies
 @st.cache_data(ttl=3600)
-def get_data_and_info(symbol):
+def get_stock_data(symbol):
     try:
         t = yf.Ticker(symbol)
+        # We halen alleen de koershistorie op (dit gaat bijna altijd goed)
         df = t.history(period="1y")
-        if df.empty: return None, None
+        if df.empty:
+            return None, {}
+            
+        # Probeer fundamentele data op te halen (dividend/beta)
+        # We doen dit apart zodat bij een fout niet alles vastloopt
+        try:
+            info = t.info
+        except:
+            info = {}
+            
         if isinstance(df.columns, pd.MultiIndex): 
             df.columns = df.columns.get_level_values(0)
+            
         df['RSI'] = ta.rsi(df['Close'], length=14)
-        return df, t.info
-    except: 
-        return None, None
+        return df, info
+    except Exception as e:
+        return None, {}
 
 def analyze_logic(df, info):
     closes = df['Close'].values.flatten()
@@ -41,18 +49,18 @@ def analyze_logic(df, info):
     ath = float(np.max(closes))
     discount = ((ath - current_price) / ath) * 100
     
-    # Dividend & Risico data veilig ophalen
-    div_yield = info.get('dividendYield', 0)
+    # Dividend & Risico (met fallbacks als Yahoo info blokkeert)
+    div_yield = info.get('dividendYield', 0) if info else 0
     div_pct = (div_yield * 100) if div_yield else 0
-    beta = info.get('beta', 1.0) if info.get('beta') else 1.0
+    beta = info.get('beta', 1.0) if info and info.get('beta') else 1.0
     
-    # Technische data
+    # Techniek
     rsi_vals = df['RSI'].fillna(50).values
     rsi = float(rsi_vals[-1])
     ma_1y = float(np.mean(closes))
     trend_1j = "✅" if current_price > ma_1y else "❌"
     
-    # ADVIES LOGICA (Indents hersteld)
+    # Advies Logica
     if trend_1j == "✅" and rsi < 60 and discount > 2:
         advies = "🌟 NU KOPEN"
     elif trend_1j == "✅" and rsi > 70:
@@ -66,45 +74,33 @@ def analyze_logic(df, info):
 
 # 4. Data Verwerking
 data_rows = []
-for sym, sector in symbols_dict.items():
-    df, info = get_data_and_info(sym)
+progress_bar = st.progress(0)
+symbols = list(symbols_dict.keys())
+
+for i, sym in enumerate(symbols):
+    df, info = get_stock_data(sym)
     if df is not None:
         tr1, pr, dv, bt, rs, disc, adv = analyze_logic(df, info)
         data_rows.append({
             "Ticker": sym, 
+            "Sector": symbols_dict[sym],
             "Advies": adv, 
             "Div %": dv, 
-            "Risico (Beta)": bt,
+            "Beta": bt,
             "RSI": rs, 
-            "Korting %": disc, 
-            "1j Trend": tr1
+            "Korting %": disc
         })
+    progress_bar.progress((i + 1) / len(symbols))
 
 if data_rows:
     df_final = pd.DataFrame(data_rows).sort_values(by="Div %", ascending=False)
 
-    # Styling functie voor tabelkleuren
     def color_advies(val):
         if "NU KOPEN" in val: return 'background-color: rgba(40, 167, 69, 0.3)'
         if "OVERVERHIT" in val: return 'background-color: rgba(220, 53, 69, 0.3)'
         return ''
 
-    # 5. Tabel tonen
     st.subheader("📊 Overzicht & Koopsignalen")
     st.dataframe(df_final.style.applymap(color_advies, subset=['Advies']), use_container_width=True)
-
-    # 6. Grafiek Sectie
-    st.divider()
-    sel = st.selectbox("Selecteer aandeel voor koersgrafiek:", df_final['Ticker'].tolist())
-    
-    if sel:
-        hist_df, _ = get_data_and_info(sel)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name="Prijs", line=dict(color='#17a2b8')))
-        # 200-daags gemiddelde voor de echte lange termijn trend
-        ma200 = hist_df['Close'].rolling(200).mean()
-        fig.add_trace(go.Scatter(x=hist_df.index, y=ma200, name="200d Gem (Trend)", line=dict(color='gray', dash='dash')))
-        fig.update_layout(title=f"Koersverloop {sel} (Lange termijn trend)", template="plotly_dark", height=450)
-        st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("Data laden mislukt. Controleer de internetverbinding.")
+    st.error("Yahoo Finance blokkeert momenteel de aanvraag. Probeer de pagina over een paar minuten te verversen.")
