@@ -8,49 +8,32 @@ import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-st.set_page_config(page_title="Debug Trader", layout="wide")
+st.set_page_config(page_title="Dividend Trader Pro", layout="wide")
 
-st.sidebar.title("🔐 Debugging Secrets")
+# --- SECRETS & DIAGNOSE ---
+st.sidebar.title("🔐 Status")
+try:
+    sleutels = list(st.secrets.keys())
+except:
+    sleutels = []
 
-# Laat alle beschikbare namen in de kluis zien (zonder de waarden te verklappen)
-all_keys = list(st.secrets.keys())
-st.sidebar.write("Gevonden namen in kluis:", all_keys)
+GMAIL_USER = st.secrets.get("GMAIL_USER")
+GMAIL_PASSWORD = st.secrets.get("GMAIL_PASSWORD")
+SEND_TO = st.secrets.get("SEND_TO", GMAIL_USER)
 
-if len(all_keys) == 0:
-    st.sidebar.error("DE KLUIS IS LEEG. Ga naar Settings > Secrets en plak de TOML code.")
+if GMAIL_USER and GMAIL_PASSWORD:
+    st.sidebar.success("✅ Secrets geladen")
 else:
-    # Zoek specifiek naar de mail keys
-    GMAIL_USER = st.secrets.get("GMAIL_USER")
-    GMAIL_PASSWORD = st.secrets.get("GMAIL_PASSWORD")
-    
-    if GMAIL_USER: st.sidebar.success(f"GMAIL_USER is aanwezig")
-    if GMAIL_PASSWORD: st.sidebar.success(f"GMAIL_PASSWORD is aanwezig")
-
-# --- (Rest van de code vanaf 'def stuur_mail' blijft gelijk) ---
-
-# Visuele check in de sidebar
-if GMAIL_USER:
-    st.sidebar.success(f"✅ Gebruiker gevonden")
-else:
-    st.sidebar.error("❌ GMAIL_USER mist")
-
-if GMAIL_PASSWORD:
-    st.sidebar.success("✅ Wachtwoord gevonden")
-else:
-    st.sidebar.error("❌ GMAIL_PASSWORD mist")
+    st.sidebar.error("❌ Secrets missen")
 
 # --- MAIL FUNCTIE ---
 def stuur_mail(ticker, advies):
-    if not GMAIL_USER or not GMAIL_PASSWORD:
-        st.sidebar.warning("Mail niet mogelijk: Secrets ontbreken.")
-        return False
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = SEND_TO
-        msg['Subject'] = f"🚀 Dividend Signaal: {ticker}"
-        msg.attach(MIMEText(f"Het systeem ziet een kans voor {ticker}: {advies}", 'plain'))
-        
+        msg['Subject'] = f"🚀 ACTIE: {ticker}"
+        msg.attach(MIMEText(f"Signaal voor {ticker}: {advies}", 'plain'))
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_PASSWORD)
@@ -58,17 +41,17 @@ def stuur_mail(ticker, advies):
         server.quit()
         return True
     except Exception as e:
-        st.sidebar.error(f"Inlog fout: {e}")
+        st.sidebar.error(f"Mail fout: {e}")
         return False
 
 if st.sidebar.button("Stuur Test Mail"):
-    with st.spinner("Testen..."):
-        if stuur_mail("TEST", "VERBINDING OK"):
-            st.sidebar.success("📩 Mail verzonden!")
+    if stuur_mail("TEST", "VERBINDING WERKT"):
+        st.sidebar.success("📩 Check je inbox!")
 
-# --- DASHBOARD LOGICA ---
+# --- DATA VERWERKING ---
 st.title("🛡️ Dividend Trader Dashboard")
 
+# Simpele lijst om syntax-fouten te voorkomen
 tickers = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
     'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
@@ -94,7 +77,7 @@ progress = st.progress(0)
 
 for i, sym in enumerate(tickers):
     df, div = get_stock_data(sym)
-    if df is not None and not df.empty:
+    if df is not None:
         p = df['Close'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
         m1y = df['Close'].mean()
@@ -124,4 +107,3 @@ if data_rows:
 
 time.sleep(900)
 st.rerun()
-
