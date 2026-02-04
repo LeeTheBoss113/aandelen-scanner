@@ -8,24 +8,25 @@ import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-st.set_page_config(page_title="Dividend Trader Pro", layout="wide")
+st.set_page_config(page_title="Debug Trader", layout="wide")
 
-# --- SECRETS MANAGER (FOUTBESTENDIG) ---
-st.sidebar.title("🔐 Geheimen Controle")
+st.sidebar.title("🔐 Debugging Secrets")
 
-# We halen alle beschikbare keys op om te kijken wat er wél is
-available_keys = [k.upper() for k in st.secrets.keys()]
+# Laat alle beschikbare namen in de kluis zien (zonder de waarden te verklappen)
+all_keys = list(st.secrets.keys())
+st.sidebar.write("Gevonden namen in kluis:", all_keys)
 
-# We zoeken naar de juiste waarden, ongeacht hoofdletters/kleine letters
-def get_secret(key_name):
-    for k in st.secrets.keys():
-        if k.upper() == key_name.upper():
-            return st.secrets[k]
-    return None
+if len(all_keys) == 0:
+    st.sidebar.error("DE KLUIS IS LEEG. Ga naar Settings > Secrets en plak de TOML code.")
+else:
+    # Zoek specifiek naar de mail keys
+    GMAIL_USER = st.secrets.get("GMAIL_USER")
+    GMAIL_PASSWORD = st.secrets.get("GMAIL_PASSWORD")
+    
+    if GMAIL_USER: st.sidebar.success(f"GMAIL_USER is aanwezig")
+    if GMAIL_PASSWORD: st.sidebar.success(f"GMAIL_PASSWORD is aanwezig")
 
-GMAIL_USER = get_secret("GMAIL_USER")
-GMAIL_PASSWORD = get_secret("GMAIL_PASSWORD")
-SEND_TO = get_secret("SEND_TO") or GMAIL_USER
+# --- (Rest van de code vanaf 'def stuur_mail' blijft gelijk) ---
 
 # Visuele check in de sidebar
 if GMAIL_USER:
@@ -123,3 +124,4 @@ if data_rows:
 
 time.sleep(900)
 st.rerun()
+
