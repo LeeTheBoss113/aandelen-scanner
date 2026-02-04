@@ -14,7 +14,6 @@ st.set_page_config(page_title="Dividend Trader Pro", layout="wide")
 # --- DIAGNOSE & SECRETS CHECK ---
 st.sidebar.title("🔐 Systeem Status")
 
-# We controleren of de kluis toegankelijk is
 try:
     sleutels = list(st.secrets.keys())
 except:
@@ -33,7 +32,6 @@ if check_pass:
 else:
     st.sidebar.error("❌ GMAIL_PASSWORD mist")
 
-# Gegevens toewijzen
 GMAIL_USER = st.secrets.get("GMAIL_USER")
 GMAIL_PASSWORD = st.secrets.get("GMAIL_PASSWORD")
 SEND_TO = st.secrets.get("SEND_TO", GMAIL_USER)
@@ -47,10 +45,8 @@ def stuur_mail(ticker, advies, div, rsi, is_test=False):
         msg['From'] = GMAIL_USER
         msg['To'] = SEND_TO
         msg['Subject'] = "🧪 TEST" if is_test else f"🚀 ACTIE: {ticker}"
-        
         inhoud = "Verbinding werkt!" if is_test else f"Kans gevonden voor {ticker} ({advies})"
         msg.attach(MIMEText(inhoud, 'plain'))
-        
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_PASSWORD)
@@ -61,7 +57,6 @@ def stuur_mail(ticker, advies, div, rsi, is_test=False):
         st.sidebar.error(f"Fout: {e}")
         return False
 
-# Testknop in Sidebar
 if st.sidebar.button("Stuur Test Mail"):
     if stuur_mail("TEST", "TEST", 0, 0, is_test=True):
         st.sidebar.success("📩 Verzonden!")
@@ -70,6 +65,6 @@ if st.sidebar.button("Stuur Test Mail"):
 st.title("🛡️ Dividend Trader Dashboard")
 st.caption(f"Update: {time.strftime('%H:%M:%S')} - Ververst elke 15 min")
 
-# De 50 Tickers
+# 2. De 50 Tickers (Netjes gestructureerd om SyntaxErrors te voorkomen)
 symbols_dict = {
-    'KO': 'Consumptie', 'PEP': '
+    '
