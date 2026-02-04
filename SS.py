@@ -8,39 +8,32 @@ import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# 1. Pagina instellingen
 st.set_page_config(page_title="Dividend Trader Pro", layout="wide")
 
-# --- DIAGNOSE & SECRETS CHECK ---
-st.sidebar.title("🔐 Systeem Status")
+# --- SECRETS & DIAGNOSE ---
+st.sidebar.title("🔐 Status")
 try:
     sleutels = list(st.secrets.keys())
 except:
     sleutels = []
 
-check_user = "GMAIL_USER" in sleutels
-check_pass = "GMAIL_PASSWORD" in sleutels
-
-if check_user: st.sidebar.success("✅ GMAIL_USER geladen")
-else: st.sidebar.error("❌ GMAIL_USER mist")
-
-if check_pass: st.sidebar.success("✅ GMAIL_PASSWORD geladen")
-else: st.sidebar.error("❌ GMAIL_PASSWORD mist")
-
 GMAIL_USER = st.secrets.get("GMAIL_USER")
 GMAIL_PASSWORD = st.secrets.get("GMAIL_PASSWORD")
 SEND_TO = st.secrets.get("SEND_TO", GMAIL_USER)
 
+if GMAIL_USER and GMAIL_PASSWORD:
+    st.sidebar.success("✅ Secrets geladen")
+else:
+    st.sidebar.error("❌ Secrets missen")
+
 # --- MAIL FUNCTIE ---
-def stuur_mail(ticker, advies, div, rsi, is_test=False):
-    if not (check_user and check_pass): return False
+def stuur_mail(ticker, advies):
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = SEND_TO
-        msg['Subject'] = "🧪 TEST" if is_test else f"🚀 ACTIE: {ticker}"
-        inhoud = "Verbinding werkt!" if is_test else f"Kans gevonden voor {ticker} ({advies})"
-        msg.attach(MIMEText(inhoud, 'plain'))
+        msg['Subject'] = f"🚀 ACTIE: {ticker}"
+        msg.attach(MIMEText(f"Signaal voor {ticker}: {advies}", 'plain'))
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_PASSWORD)
@@ -48,23 +41,41 @@ def stuur_mail(ticker, advies, div, rsi, is_test=False):
         server.quit()
         return True
     except Exception as e:
-        st.sidebar.error(f"Fout: {e}")
+        st.sidebar.error(f"Mail fout: {e}")
         return False
 
 if st.sidebar.button("Stuur Test Mail"):
-    if stuur_mail("TEST", "TEST", 0, 0, is_test=True):
-        st.sidebar.success("📩 Verzonden!")
+    if stuur_mail("TEST", "VERBINDING WERKT"):
+        st.sidebar.success("📩 Check je inbox!")
 
-# --- HOOFDPROGRAMMA ---
+# --- DATA VERWERKING ---
 st.title("🛡️ Dividend Trader Dashboard")
-st.caption(f"Update: {time.strftime('%H:%M:%S')} - Ververst elke 15 min")
 
-# 2. De 50 Tickers (In compact formaat om SyntaxErrors te vermijden)
-symbols_dict = {
-    'KO':'Consumptie','PEP':'Consumptie','JNJ':'Health','O':'Vastgoed','PG':'Consumptie',
-    'ABBV':'Health','CVX':'Energie','XOM':'Energie','MMM':'Industrie','T':'Telecom',
-    'VZ':'Telecom','WMT':'Retail','LOW':'Retail','TGT':'Retail','ABT':'Health',
-    'MCD':'Horeca','ADBE':'Tech','MSFT':'Tech','AAPL':'Tech','IBM':'Tech',
-    'HD':'Retail','COST':'Retail','LLY':'Health','PFE':'Health','MRK':'Health',
-    'DHR':'Industrie','UNH':'Health','BMY':'Health','AMGN':'Health','SBUX':'Horeca',
-    'CAT':'Industrie','DE':'Industrie','HON':'Industrie','UPS':'
+# Simpele lijst om syntax-fouten te voorkomen
+tickers = [
+    'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
+    'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
+    'HD', 'COST', 'LLY', 'PFE', 'MRK', 'DHR', 'UNH', 'BMY', 'AMGN', 'SBUX',
+    'CAT', 'DE', 'HON', 'UPS', 'FDX', 'NEE', 'SO', 'D', 'DUK', 'PM',
+    'MO', 'SCHW', 'BLK', 'SPGI', 'V', 'MA', 'AVGO', 'TXN', 'NVDA', 'JPM'
+]
+
+@st.cache_data(ttl=600)
+def get_stock_data(symbol):
+    try:
+        t = yf.Ticker(symbol)
+        df = t.history(period="1y")
+        if df.empty: return None, 0
+        div = (t.info.get('dividendYield', 0) or 0) * 100
+        df['RSI'] = ta.rsi(df['Close'], length=14)
+        return df, div
+    except:
+        return None, 0
+
+data_rows = []
+progress = st.progress(0)
+
+for i, sym in enumerate(tickers):
+    df, div = get_stock_data(sym)
+    if df is not None:
+        p = df['Close'].iloc[-1]
