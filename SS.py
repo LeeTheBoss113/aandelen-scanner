@@ -58,4 +58,53 @@ def analyze_logic(df, info):
     elif trend_1j == "✅" and rsi > 70:
         advies = "⚠️ OVERVERHIT"
     elif trend_1j == "❌":
-        advies = "😴 GEEN
+        advies = "😴 GEEN TREND"
+    else:
+        advies = "⏳ AFWACHTEN"
+        
+    return trend_1j, round(current_price, 2), round(div_pct, 2), round(beta, 2), round(rsi, 1), round(discount, 1), advies
+
+# 4. Data Verwerking
+data_rows = []
+for sym, sector in symbols_dict.items():
+    df, info = get_data_and_info(sym)
+    if df is not None:
+        tr1, pr, dv, bt, rs, disc, adv = analyze_logic(df, info)
+        data_rows.append({
+            "Ticker": sym, 
+            "Advies": adv, 
+            "Div %": dv, 
+            "Risico (Beta)": bt,
+            "RSI": rs, 
+            "Korting %": disc, 
+            "1j Trend": tr1
+        })
+
+if data_rows:
+    df_final = pd.DataFrame(data_rows).sort_values(by="Div %", ascending=False)
+
+    # Styling functie voor tabelkleuren
+    def color_advies(val):
+        if "NU KOPEN" in val: return 'background-color: rgba(40, 167, 69, 0.3)'
+        if "OVERVERHIT" in val: return 'background-color: rgba(220, 53, 69, 0.3)'
+        return ''
+
+    # 5. Tabel tonen
+    st.subheader("📊 Overzicht & Koopsignalen")
+    st.dataframe(df_final.style.applymap(color_advies, subset=['Advies']), use_container_width=True)
+
+    # 6. Grafiek Sectie
+    st.divider()
+    sel = st.selectbox("Selecteer aandeel voor koersgrafiek:", df_final['Ticker'].tolist())
+    
+    if sel:
+        hist_df, _ = get_data_and_info(sel)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name="Prijs", line=dict(color='#17a2b8')))
+        # 200-daags gemiddelde voor de echte lange termijn trend
+        ma200 = hist_df['Close'].rolling(200).mean()
+        fig.add_trace(go.Scatter(x=hist_df.index, y=ma200, name="200d Gem (Trend)", line=dict(color='gray', dash='dash')))
+        fig.update_layout(title=f"Koersverloop {sel} (Lange termijn trend)", template="plotly_dark", height=450)
+        st.plotly_chart(fig, use_container_width=True)
+else:
+    st.error("Data laden mislukt. Controleer de internetverbinding.")
