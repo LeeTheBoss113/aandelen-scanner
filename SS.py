@@ -13,7 +13,6 @@ st.set_page_config(page_title="Dividend Trader Pro", layout="wide")
 
 # --- DIAGNOSE & SECRETS CHECK ---
 st.sidebar.title("🔐 Systeem Status")
-
 try:
     sleutels = list(st.secrets.keys())
 except:
@@ -22,15 +21,11 @@ except:
 check_user = "GMAIL_USER" in sleutels
 check_pass = "GMAIL_PASSWORD" in sleutels
 
-if check_user:
-    st.sidebar.success("✅ GMAIL_USER geladen")
-else:
-    st.sidebar.error("❌ GMAIL_USER mist")
+if check_user: st.sidebar.success("✅ GMAIL_USER geladen")
+else: st.sidebar.error("❌ GMAIL_USER mist")
 
-if check_pass:
-    st.sidebar.success("✅ GMAIL_PASSWORD geladen")
-else:
-    st.sidebar.error("❌ GMAIL_PASSWORD mist")
+if check_pass: st.sidebar.success("✅ GMAIL_PASSWORD geladen")
+else: st.sidebar.error("❌ GMAIL_PASSWORD mist")
 
 GMAIL_USER = st.secrets.get("GMAIL_USER")
 GMAIL_PASSWORD = st.secrets.get("GMAIL_PASSWORD")
@@ -38,8 +33,7 @@ SEND_TO = st.secrets.get("SEND_TO", GMAIL_USER)
 
 # --- MAIL FUNCTIE ---
 def stuur_mail(ticker, advies, div, rsi, is_test=False):
-    if not check_user or not check_pass:
-        return False
+    if not (check_user and check_pass): return False
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
@@ -65,6 +59,12 @@ if st.sidebar.button("Stuur Test Mail"):
 st.title("🛡️ Dividend Trader Dashboard")
 st.caption(f"Update: {time.strftime('%H:%M:%S')} - Ververst elke 15 min")
 
-# 2. De 50 Tickers (Netjes gestructureerd om SyntaxErrors te voorkomen)
+# 2. De 50 Tickers (In compact formaat om SyntaxErrors te vermijden)
 symbols_dict = {
-    '
+    'KO':'Consumptie','PEP':'Consumptie','JNJ':'Health','O':'Vastgoed','PG':'Consumptie',
+    'ABBV':'Health','CVX':'Energie','XOM':'Energie','MMM':'Industrie','T':'Telecom',
+    'VZ':'Telecom','WMT':'Retail','LOW':'Retail','TGT':'Retail','ABT':'Health',
+    'MCD':'Horeca','ADBE':'Tech','MSFT':'Tech','AAPL':'Tech','IBM':'Tech',
+    'HD':'Retail','COST':'Retail','LLY':'Health','PFE':'Health','MRK':'Health',
+    'DHR':'Industrie','UNH':'Health','BMY':'Health','AMGN':'Health','SBUX':'Horeca',
+    'CAT':'Industrie','DE':'Industrie','HON':'Industrie','UPS':'
