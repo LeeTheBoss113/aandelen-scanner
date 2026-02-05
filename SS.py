@@ -82,14 +82,27 @@ for i, s in enumerate(tickers):
         })
     p_bar.progress((i + 1) / len(tickers))
 
+# Vervang het onderste gedeelte van je code (bij # 5. Tabel tonen) door dit:
+
 if res:
     df_final = pd.DataFrame(res).sort_values("Div %", ascending=False)
     
-    # Styling functie
-    def color_stat(val):
-        if val == "🌟 KOOP": return 'background-color: #28a745; color: white'
-        if val == "💰 WINST": return 'background-color: #007bff; color: white'
-        if val == "🔴 VERMIJDEN": return 'color: #dc3545'
-        return ''
-
-    st.dataframe
+    st.dataframe(
+        df_final,
+        use_container_width=True,
+        hide_index=True,  # Maakt de tabel veel cleaner
+        column_config={
+            "Prijs": st.column_config.NumberColumn("Prijs ($)", format="$ %.2f"),
+            "Koersdoel": st.column_config.NumberColumn("Target ($)", format="$ %.2f"),
+            "Potentieel %": st.column_config.ProgressColumn(
+                "Upside Potentieel",
+                help="Hoeveel procent tot het analisten koersdoel",
+                format="%d%%",
+                min_value=-20,
+                max_value=50,
+            ),
+            "Div %": st.column_config.NumberColumn("Dividend", format="%.2f %%"),
+            "RSI": st.column_config.NumberColumn("RSI (14d)", format="%.1f")
+        },
+        height=800
+    )
