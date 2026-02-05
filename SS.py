@@ -7,14 +7,7 @@ import os
 
 st.set_page_config(page_title="Stability Investor Pro", layout="wide")
 
-# Custom CSS voor een strakke look
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-    """, unsafe_allow_html=True)
-
+# Bestandsbeheer
 PF_FILE = "stability_portfolio.csv"
 
 def load_pf():
@@ -49,7 +42,13 @@ with st.sidebar:
         st.rerun()
 
 # --- DATA SCANNEN ---
-markt_tickers = ['KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM','T','VZ','WMT','LOW','TGT','ABT','MCD','MSFT','AAPL','IBM','HD','COST','LLY','PFE','MRK','UNH','BMY','SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA','AVGO','TXN','JPM','SCHW']
+markt_tickers = [
+    'KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM','T','VZ','WMT',
+    'LOW','TGT','ABT','MCD','MSFT','AAPL','IBM','HD','COST','LLY','PFE',
+    'MRK','UNH','BMY','SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA',
+    'AVGO','TXN','JPM','SCHW'
+]
+
 mijn_tickers_lijst = [str(p['Ticker']).upper() for p in st.session_state.pf_data]
 alle_tickers = list(set(markt_tickers + mijn_tickers_lijst))
 
@@ -60,7 +59,13 @@ def get_data(s):
         h = tk.history(period="2y")
         if h.empty: return None
         i = tk.info
-        return {"h": h, "div": (i.get('dividendYield', 0) or 0) * 100, "payout": (i.get('payoutRatio', 0) or 0) * 100, "sector": i.get('sector', 'N/B'), "price": h['Close'].iloc[-1]}
+        return {
+            "h": h, 
+            "div": (i.get('dividendYield', 0) or 0) * 100, 
+            "payout": (i.get('payoutRatio', 0) or 0) * 100, 
+            "sector": i.get('sector', 'N/B'), 
+            "price": h['Close'].iloc[-1]
+        }
     except: return None
 
 scanner_res, pf_res = [], []
@@ -73,16 +78,38 @@ for n, s in enumerate(alle_tickers):
         rsi = ta.rsi(h['Close'], length=14).iloc[-1] if len(h) > 14 else 50
         ma200 = h['Close'].tail(200).mean() if len(h) >= 200 else p
         
-        # Status met Emoji
-        if p > ma200 and rsi < 42: adv = "💎 KOOP"
-        elif p > ma200 and rsi > 75: adv = "⚠️ DUUR"
-        elif p > ma200: adv = "✅ STABIEL"
-        else: adv = "⏳ WACHTEN"
+        # Status bepaling
+        if p > ma200 and rsi < 42: adv = "KOOP"
+        elif p > ma200 and rsi > 75: adv = "DUUR"
+        elif p > ma200: adv = "STABIEL"
+        else: adv = "WACHTEN"
 
+        # Portfolio verwerking
         for entry in st.session_state.pf_data:
             if str(entry['Ticker']).upper() == s:
-                inleg, waarde = float(entry['Inleg']), (float(entry['Inleg']) / float(entry['Prijs'])) * p
-                pf_res.append({"Ticker": s, "Inleg": inleg, "Waarde": waarde, "Winst": waarde-inleg, "Rendement %": ((waarde-inleg)/inleg)*100, "RSI": rsi, "Status": adv})
+                inleg = float(entry['Inleg'])
+                waarde = (inleg / float(entry['Prijs'])) * p
+                pf_res.append({
+                    "Ticker": s, 
+                    "Inleg": inleg, 
+                    "Waarde": waarde, 
+                    "Winst": waarde-inleg, 
+                    "Rendement %": ((waarde-inleg)/inleg)*100, 
+                    "RSI": rsi, 
+                    "Status": adv
+                })
 
+        # Scanner verwerking
         if s in markt_tickers:
-            scanner_res.append({"Ticker": s, "Sector": data['sector'], "Status": adv, "Div %": data['
+            scanner_res.append({
+                "Ticker": s, 
+                "Sector": data['sector'], 
+                "Status": adv, 
+                "Div %": data['div'], 
+                "Payout %": data['payout'], 
+                "RSI": rsi
+            })
+    balk.progress((n + 1) / len(alle_tickers))
+
+# --- DASHBOARD ---
+st.title("📈 Stability Investor
