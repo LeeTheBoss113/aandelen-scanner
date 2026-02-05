@@ -38,7 +38,7 @@ AL = list(set(ML + [x['T'] for x in st.session_state.pf]))
 def gd(s):
  try:
   tk = yf.Ticker(s)
-  h = tk.history(period="2y") # 2 jaar nodig voor MA200 en jaarvergelijking
+  h = tk.history(period="2y")
   if h.empty: return None
   return {"h":h,"i":tk.info,"p":h['Close'].iloc[-1]}
  except: return None
@@ -50,31 +50,35 @@ with st.spinner('Analyse uitvoeren...'):
   if not d: continue
   p, h, inf = d['p'], d['h'], d['i']
   
-  # RSI berekening + afronding
   r = round(ta.rsi(h['Close'], 14).iloc[-1], 1) if len(h)>14 else 50.0
   m = h['Close'].tail(200).mean() if len(h)>=200 else p
   
-  # Performance berekening
   p_6m = round(((p - h['Close'].iloc[-126])/h['Close'].iloc[-126])*100,1) if len(h)>126 else 0.0
   p_1y = round(((p - h['Close'].iloc[-252])/h['Close'].iloc[-252])*100,1) if len(h)>252 else 0.0
   
+  # Basis Status
   s = "WACHTEN"
   if p > m:
    s = "STABIEL"
    if r < 42: s = "KOOP"
    if r > 75: s = "DUUR"
+
+  # Portfolio Actie Logica
+  actie = "HOUDEN"
+  if p < m: actie = "⚠️ VERKOOP (Trendbreuk)"
+  elif r > 75: actie = "💰 WINSTRUST (Oververhit)"
   
   for pi in st.session_state.pf:
    if pi['T'] == t:
     w = (pi['I']/pi['P'])*p
-    pr.append({"Ticker":t,"Koers":p,"Winst":round(w-pi['I'],2),"6M %":p_6m,"1Y %":p_1y,"Status":s})
+    pr.append({"Ticker":t,"Koers":p,"Winst":round(w-pi['I'],2),"6M %":p_6m,"1Y %":p_1y,"Status":s, "Advies": actie})
   
   if t in ML:
    sr.append({"Ticker":t,"Koers":p,"Div":round((inf.get('dividendYield',0) or 0)*100,2),"Pay":round((inf.get('payoutRatio',0) or 0)*100,1),"Status":s,"RSI":r})
 
 st.title("🏦 Stability Investor Dashboard")
 if not pr and not sr:
- st.warning("Data laden mislukt. Probeer de pagina te verversen.")
+ st.warning("Data laden mislukt.")
 else:
  t1, t2 = st.tabs(["📊 Portfolio", "🔍 Scanner"])
  
@@ -86,7 +90,15 @@ else:
   if pr:
    dfp = pd.DataFrame(pr)
    st.metric("Totaal Winst", f"$ {round(dfp['Winst'].sum(), 2)}")
-   st.dataframe(stl(dfp), use_container_width=True, hide_index=True)
+   # Kleurcodering voor Advies kolom
+   def style_advies(v):
+    if "VERKOOP" in v: return "background-color: #f8d7da; color: #721c24; font-weight: bold"
+    if "WINSTRUST" in v: return "background-color: #fff3cd; color: #856404"
+    return "color: #155724"
+   
+   styled_pf = stl(dfp).map(style_advies, subset=['Advies'])
+   st.dataframe(styled_pf, use_container_width=True, hide_index=True)
+  else: st.info("Voeg aandelen toe via de sidebar.")
 
  with t2:
   if sr:
