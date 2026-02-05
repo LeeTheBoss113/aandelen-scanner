@@ -26,7 +26,6 @@ if 'pf_data' not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Portfolio Beheer")
     
-    # Formulier om toe te voegen
     with st.form("add_stock", clear_on_submit=True):
         t_in = st.text_input("Ticker").upper().strip()
         b_in = st.number_input("Inleg ($)", min_value=0.0, step=10.0)
@@ -39,18 +38,17 @@ with st.sidebar:
 
     st.divider()
     
-    # Individueel verwijderen
     if st.session_state.pf_data:
         st.subheader("🗑️ Verwijder Ticker")
         for i, item in enumerate(st.session_state.pf_data):
             col1, col2 = st.columns([3, 1])
-            col1.write(f"**{item['Ticker']}** (${item['Inleg']})")
+            col1.write(f"**{item['Ticker']}**")
             if col2.button("❌", key=f"del_{i}"):
                 st.session_state.pf_data.pop(i)
                 save_pf(st.session_state.pf_data)
                 st.rerun()
     
-    if st.button("🚨 Wis Volledige Data"):
+    if st.button("🚨 Wis Alles"):
         st.session_state.pf_data = []
         if os.path.exists(PF_FILE): os.remove(PF_FILE)
         st.rerun()
@@ -79,6 +77,7 @@ for i, ticker in enumerate(alle_tickers):
         rsi = ta.rsi(h['Close'], length=14).iloc[-1] if len(h) > 14 else 50
         ma200 = h['Close'].tail(200).mean() if len(h) >= 200 else p
         
+        # Status Logica
         status = "STABIEL" if p > ma200 else "WACHTEN"
         if p > ma200 and rsi < 42: status = "KOOP"
         if p > ma200 and rsi > 75: status = "DUUR"
@@ -105,6 +104,18 @@ st.title("🏦 Stability Investor Dashboard")
 
 tab1, tab2, tab3 = st.tabs(["📊 Mijn Portfolio", "🔍 Markt Scanner", "🛡️ Strategie Info"])
 
+# Functie voor kleurstyling (Visuele upgrade)
+def style_df(df):
+    def color_status(val):
+        if val == "KOOP": return 'background-color: #d4edda; color: #155724; font-weight: bold;'
+        if val == "WACHTEN": return 'color: #721c24; background-color: #f8d7da;'
+        return ''
+    
+    def color_payout(val):
+        return 'color: red' if val > 80 else 'color: green'
+
+    return df.style.map(color_status, subset=['Status']).map(color_payout, subset=['Payout'])
+
 with tab1:
     if pf_results:
         df_pf = pd.DataFrame(pf_results)
@@ -113,19 +124,19 @@ with tab1:
         c2.metric("Huidige Waarde", f"$ {df_pf['Waarde'].sum():.2f}")
         c3.metric("Netto Resultaat", f"$ {df_pf['Winst'].sum():.2f}", delta=f"{df_pf['Winst'].sum():.2f}")
         
-        st.dataframe(df_pf, use_container_width=True, hide_index=True, column_config={
+        st.dataframe(style_df(df_pf), use_container_width=True, hide_index=True, column_config={
             "Inleg": st.column_config.NumberColumn(format="$ %.2f"),
             "Waarde": st.column_config.NumberColumn(format="$ %.2f"),
             "Winst": st.column_config.NumberColumn(format="$ %.2f"),
             "RSI": st.column_config.ProgressColumn(min_value=0, max_value=100)
         })
     else:
-        st.info("Je portfolio is nog leeg. Voeg tickers toe in de zijbalk.")
+        st.info("Je portfolio is nog leeg. Gebruik de sidebar.")
 
 with tab2:
     if market_results:
         df_m = pd.DataFrame(market_results).sort_values("Dividend", ascending=False)
-        st.dataframe(df_m, use_container_width=True, hide_index=True, column_config={
+        st.dataframe(style_df(df_m), use_container_width=True, hide_index=True, column_config={
             "Dividend": st.column_config.NumberColumn(format="%.2f%%"),
             "Payout": st.column_config.NumberColumn(format="%.1f%%"),
             "RSI": st.column_config.ProgressColumn(min_value=0, max_value=100)
@@ -133,14 +144,7 @@ with tab2:
 
 with tab3:
     st.subheader("Uitleg van de Indicatoren")
-    st.info("Dit systeem is gericht op stabiliteit en het vermijden van 'vangen van vallende messen'.")
-    st.markdown("""
-    * **MA 200 (Trend):** We kijken naar het 200-daags gemiddelde. Ligt de prijs daaronder? Dan blijven we eraf, hoe hoog het dividend ook is.
-    * **RSI (Timing):**
-        * **< 42 (KOOP):** Het aandeel is tijdelijk ondergewaardeerd binnen een stijgende trend.
-        * **> 75 (DUUR):** Het aandeel is 'overbought'. Niet het moment om nieuw kapitaal in te leggen.
-    * **Payout Ratio:** Een gezonde payout ratio (onder 80%) betekent dat het bedrijf het dividend ook in slechte tijden kan blijven betalen.
-    """)
+    st.write("De scanner filtert op lange termijn stabiliteit (MA200) en gezonde dividenden.")
 
 time.sleep(900)
 st.rerun()
