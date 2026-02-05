@@ -69,7 +69,6 @@ for j, t in enumerate(AL):
         rsi = ta.rsi(h['Close'], 14).iloc[-1]
         ma = h['Close'].tail(200).mean()
         
-        # Status Logica
         stt = "WACHTEN"
         if p > ma:
             stt = "STABIEL"
@@ -96,18 +95,30 @@ t1, t2 = st.tabs(["Portfolio", "Scanner"])
 
 def style(df):
     def _c(v):
-        if v == "KOOP": return "color: green; font-weight: bold"
+        if v == "KOOP": return "color: green"
         if v == "WACHTEN": return "color: red"
         return ""
-    return df.style.map(_c, subset=['Status'])
+    if 'Status' in df.columns:
+        return df.style.map(_c, subset=['Status'])
+    return df
 
 with t1:
-    if pr: st.dataframe(style(pd.DataFrame(pr)), hide_index=True)
-    else: st.write("Leeg")
+    if pr: 
+        st.dataframe(style(pd.DataFrame(pr)), hide_index=True)
+    else: 
+        st.write("Leeg")
 
 with t2:
     if sr:
         df = pd.DataFrame(sr)
+        # Sorteer-logica veilig opgesplitst
         rk = {"KOOP": 1, "STABIEL": 2, "DUUR": 3, "WACHTEN": 4}
         df['R'] = df['Status'].map(rk)
-        df = df.sort_values(['R', 'Div
+        # Gebruik variabelen om de regel kort te houden
+        C1 = 'R'
+        C2 = 'Div'
+        df = df.sort_values([C1, C2], ascending=[True, False])
+        st.dataframe(style(df.drop(columns='R')), hide_index=True)
+
+time.sleep(900)
+st.rerun()
