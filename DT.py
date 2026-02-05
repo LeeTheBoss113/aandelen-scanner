@@ -5,68 +5,109 @@ import pandas_ta as ta
 import time
 import os
 
-st.set_page_config(page_title="Stability Investor Pro", layout="wide")
+st.set_page_config(layout="wide")
+PF = "stability_portfolio.csv"
 
-PF_FILE = "stability_portfolio.csv"
-
-def load_pf():
-    if os.path.exists(PF_FILE):
-        try: return pd.read_csv(PF_FILE).to_dict('records')
+def load():
+    if os.path.exists(PF):
+        try: return pd.read_csv(PF).to_dict('records')
         except: return []
     return []
 
-def save_pf(d):
-    pd.DataFrame(d).to_csv(PF_FILE, index=False)
+def save(d):
+    pd.DataFrame(d).to_csv(PF, index=False)
 
 if 'pf_data' not in st.session_state:
-    st.session_state.pf_data = load_pf()
+    st.session_state.pf_data = load()
 
-# --- SIDEBAR BEHEER ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.header("⚙️ Beheer")
-    with st.form("add_stock", clear_on_submit=True):
-        t_in = st.text_input("Ticker").upper().strip()
-        b_in = st.number_input("Inleg ($)", min_value=0.0, step=10.0)
-        p_in = st.number_input("Aankoop ($)", min_value=0.01, step=0.1)
-        if st.form_submit_button("➕ Toevoegen"):
-            if t_in:
-                st.session_state.pf_data.append({"Ticker": t_in, "Inleg": b_in, "Prijs": p_in})
-                save_pf(st.session_state.pf_data)
+    st.header("Beheer")
+    with st.form("add", clear_on_submit=True):
+        t = st.text_input("Ticker").upper().strip()
+        i = st.number_input("Inleg", min_value=0.0)
+        p = st.number_input("Aankoop", min_value=0.01)
+        if st.form_submit_button("Voeg toe"):
+            if t:
+                st.session_state.pf_data.append(
+                    {"Ticker": t, "Inleg": i, "Prijs": p}
+                )
+                save(st.session_state.pf_data)
                 st.rerun()
 
-    if st.session_state.pf_data:
-        st.divider()
-        for i, item in enumerate(st.session_state.pf_data):
-            c1, c2 = st.columns([3, 1])
-            c1.write(f"**{item['Ticker']}**")
-            if c2.button("❌", key=f"del_{i}"):
-                st.session_state.pf_data.pop(i)
-                save_pf(st.session_state.pf_data)
-                st.rerun()
+    for n, item in enumerate(st.session_state.pf_data):
+        c1, c2 = st.columns([3, 1])
+        c1.write(item['Ticker'])
+        if c2.button("X", key=f"d{n}"):
+            st.session_state.pf_data.pop(n)
+            save(st.session_state.pf_data)
+            st.rerun()
 
-# --- DATA ENGINE ---
-m_list = ['KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM','T','VZ','WMT','LOW','TGT','ABT','MCD','MSFT','AAPL','IBM','HD','COST','LLY','PFE','MRK','UNH','BMY','SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA','AVGO','TXN','JPM','SCHW']
-a_list = list(set(m_list + [p['Ticker'] for p in st.session_state.pf_data]))
+# --- ENGINE ---
+ML = ['KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM',
+      'T','VZ','WMT','LOW','TGT','ABT','MCD','MSFT','AAPL',
+      'IBM','HD','COST','LLY','PFE','MRK','UNH','BMY',
+      'SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA',
+      'AVGO','TXN','JPM','SCHW']
+AL = list(set(ML + [x['Ticker'] for x in st.session_state.pf_data]))
 
 @st.cache_data(ttl=3600)
-def get_data(s):
+def gd(s):
     try:
         tk = yf.Ticker(s)
         h = tk.history(period="2y")
-        if h.empty: return None
         return {"h": h, "i": tk.info, "p": h['Close'].iloc[-1]}
     except: return None
 
-pf_res, sc_res = [], []
-pb = st.progress(0)
+pr, sr = [], []
+bar = st.progress(0)
 
-for i, t in enumerate(a_list):
-    d = get_data(t)
+for j, t in enumerate(AL):
+    d = gd(t)
     if d:
         p, h, inf = d['p'], d['h'], d['i']
-        rsi = ta.rsi(h['Close'], length=14).iloc[-1] if len(h) > 14 else 50
-        ma = h['Close'].tail(200).mean() if len(h) >= 200 else p
+        rsi = ta.rsi(h['Close'], 14).iloc[-1]
+        ma = h['Close'].tail(200).mean()
         
-        stt = "STABIEL" if p > ma else "WACHTEN"
-        if p > ma and rsi < 42: stt = "KOOP"
-        if p > ma and rsi > 75: stt = "DU
+        # Status Logica
+        stt = "WACHTEN"
+        if p > ma:
+            stt = "STABIEL"
+            if rsi < 42: stt = "KOOP"
+            if rsi > 75: stt = "DUUR"
+
+        for pi in st.session_state.pf_data:
+            if pi['Ticker'] == t:
+                w = (pi['Inleg'] / pi['Prijs']) * p
+                pr.append({"Ticker": t, "Prijs": p, 
+                           "Winst": w - pi['Inleg'], 
+                           "Status": stt})
+
+        if t in ML:
+            sr.append({"Ticker": t, "Prijs": p, 
+                       "Div": (inf.get('dividendYield', 0) or 0)*100,
+                       "Pay": (inf.get('payoutRatio', 0) or 0)*100,
+                       "Status": stt})
+    bar.progress((j + 1) / len(AL))
+
+# --- VIEW ---
+st.title("Stability Investor")
+t1, t2 = st.tabs(["Portfolio", "Scanner"])
+
+def style(df):
+    def _c(v):
+        if v == "KOOP": return "color: green; font-weight: bold"
+        if v == "WACHTEN": return "color: red"
+        return ""
+    return df.style.map(_c, subset=['Status'])
+
+with t1:
+    if pr: st.dataframe(style(pd.DataFrame(pr)), hide_index=True)
+    else: st.write("Leeg")
+
+with t2:
+    if sr:
+        df = pd.DataFrame(sr)
+        rk = {"KOOP": 1, "STABIEL": 2, "DUUR": 3, "WACHTEN": 4}
+        df['R'] = df['Status'].map(rk)
+        df = df.sort_values(['R', 'Div
