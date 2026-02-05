@@ -23,8 +23,8 @@ with st.sidebar:
  st.header("Beheer")
  with st.form("a", clear_on_submit=True):
   t = st.text_input("Ticker").upper()
-  i = st.number_input("Inleg", min_value=0.0)
-  p = st.number_input("Aankoop", min_value=0.01)
+  i = st.number_input("Inleg")
+  p = st.number_input("Aankoop")
   if st.form_submit_button("OK"):
    if t:
     st.session_state.pf.append({"T":t,"I":i,"P":p})
@@ -52,14 +52,18 @@ for t in AL:
  d = gd(t)
  if not d: continue
  p, h, inf = d['p'], d['h'], d['i']
- r = round(ta.rsi(h['Close'], 14).iloc[-1], 1)
- m = h['Close'].tail(200).mean()
  c = h['Close']
- p6 = round(((p-c.iloc[-126])/c.iloc[-126])*100,1)
- p1 = round(((p-c.iloc[-252])/c.iloc[-252])*100,1)
+ r = ta.rsi(c, 14).iloc[-1]
+ r = round(r, 1)
+ m = c.tail(200).mean()
+ p6 = (p-c.iloc[-126])/c.iloc[-126]
+ p6 = round(p6*100, 1)
+ p1 = (p-c.iloc[-252])/c.iloc[-252]
+ p1 = round(p1*100, 1)
  
- # Status & Advies in compacte vorm
- s = "BUY" if (p > m and r < 42) else ("HIGH" if r > 75 else "OK")
+ s = "OK"
+ if p > m and r < 42: s = "BUY"
+ if r > 75: s = "HIGH"
  if p < m: s = "WAIT"
  
  a = "HOLD"
@@ -69,10 +73,15 @@ for t in AL:
  for pi in st.session_state.pf:
   if pi['T'] == t:
    w = (pi['I']/pi['P'])*p
-   res = {"T":t,"P":p,"W$":round(w-pi['I'],2),"W%":round(((w-pi['I'])/pi['I'])*100,1),"6M":p6,"1Y":p1,"Status":s,"Advies":a}
+   w_abs = round(w-pi['I'], 2)
+   w_pc = (w-pi['I'])/pi['I']
+   w_pc = round(w_pc*100, 1)
+   res = {"T":t,"P":p,"W$":w_abs,"W%":w_pc,"6M":p6,"1Y":p1,"S":s,"A":a}
    pr.append(res)
  if t in ML:
-  sr.append({"T":t,"P":p,"D%":round((inf.get('dividendYield',0) or 0)*100,2),"RSI":r,"Status":s})
+  dy = inf.get('dividendYield', 0)
+  if dy is None: dy = 0
+  sr.append({"T":t,"P":p,"D":round(dy*100,2),"R":r,"S":s})
 
 st.title("Stability Investor")
 t1, t2 = st.tabs(["Portfolio", "Scanner"])
@@ -80,11 +89,18 @@ t1, t2 = st.tabs(["Portfolio", "Scanner"])
 with t1:
  if pr:
   dfp = pd.DataFrame(pr)
-  st.metric("Total Profit", round(dfp['W$'].sum(), 2))
+  tot = dfp['W$'].sum()
+  st.metric("Total Profit", round(tot, 2))
   st.dataframe(dfp, hide_index=True)
 
 with t2:
  if sr:
   dfs = pd.DataFrame(sr)
   st.subheader("Top 3 Low RSI")
-  top = dfs.sort_values('
+  top = dfs.sort_values(by='R')
+  top3 = top.head(3)
+  cl = st.columns(3)
+  for i, x in enumerate(top3.to_dict('records')):
+   cl[i].metric(x['T'], x['P'], f"RSI: {x['R']}")
+  st.divider()
+  st.dataframe(top, hide_index=True)
