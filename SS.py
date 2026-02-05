@@ -19,7 +19,7 @@ MIJN_PORTFOLIO = {
 # Aantal = Totaal Bedrag / Aankoopprijs
 # Actuele Waarde = Aantal * Huidige Prijs
 
-st.title("🛡️ Dividend Trader & Portfolio")
+st.title("🛡️ Lange(re) Termijn Dividend Trader")
 
 nu = time.strftime('%H:%M:%S')
 st.sidebar.write("Laatste update:", nu)
@@ -120,5 +120,6 @@ if res:
 
 time.sleep(900)
 st.rerun()
+
 
 
