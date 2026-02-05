@@ -32,6 +32,7 @@ def get_stock_info(s):
             "hist": hist,
             "div": (info.get('dividendYield', 0) or 0) * 100,
             "sector": info.get('sector', 'Onbekend'),
+            "exchange": info.get('exchange', 'Onbekend'), # Haalt NYSE of NMS (Nasdaq) op
             "target": info.get('targetMeanPrice', None),
             "price": hist['Close'].iloc[-1]
         }
@@ -56,7 +57,7 @@ for i, s in enumerate(tickers):
         
         # Koersdoel berekening
         target = data['target']
-        potentieel = round(((target - price) / price) * 100, 1) if target else 0
+        potentieel = round(((target - price) / price) * 100, 1) if target and target > 0 else 0
         
         # Advies Logica
         if t1y == "✅" and t6m == "✅" and rsi < 45:
@@ -70,6 +71,7 @@ for i, s in enumerate(tickers):
 
         res.append({
             "Ticker": s,
+            "Beurs": data['exchange'],
             "Sector": data['sector'],
             "Status": stat,
             "Prijs": round(price, 2),
@@ -82,27 +84,24 @@ for i, s in enumerate(tickers):
         })
     p_bar.progress((i + 1) / len(tickers))
 
-# Vervang het onderste gedeelte van je code (bij # 5. Tabel tonen) door dit:
-
 if res:
     df_final = pd.DataFrame(res).sort_values("Div %", ascending=False)
     
+    # Gebruik van de uitgebreide st.dataframe mogelijkheden
     st.dataframe(
         df_final,
         use_container_width=True,
-        hide_index=True,  # Maakt de tabel veel cleaner
+        hide_index=True,
         column_config={
+            "Beurs": st.column_config.TextColumn("Beurs", width="small"),
             "Prijs": st.column_config.NumberColumn("Prijs ($)", format="$ %.2f"),
             "Koersdoel": st.column_config.NumberColumn("Target ($)", format="$ %.2f"),
             "Potentieel %": st.column_config.ProgressColumn(
-                "Upside Potentieel",
-                help="Hoeveel procent tot het analisten koersdoel",
+                "Upside",
+                help="Potentieel tot koersdoel",
                 format="%d%%",
                 min_value=-20,
                 max_value=50,
             ),
             "Div %": st.column_config.NumberColumn("Dividend", format="%.2f %%"),
-            "RSI": st.column_config.NumberColumn("RSI (14d)", format="%.1f")
-        },
-        height=800
-    )
+            "RSI
