@@ -8,13 +8,11 @@ st.set_page_config(layout="wide")
 F = "stability_portfolio.csv"
 
 def ld():
- if os.path.exists(F):
-  try: return pd.read_csv(F).to_dict('records')
-  except: return []
- return []
+ if not os.path.exists(F): return []
+ try: return pd.read_csv(F).to_dict('records')
+ except: return []
 
 def sv(d): pd.DataFrame(d).to_csv(F, index=False)
-
 if 'pf' not in st.session_state: st.session_state.pf = ld()
 
 with st.sidebar:
@@ -37,19 +35,18 @@ AL = list(set(ML + [x['T'] for x in st.session_state.pf]))
 @st.cache_data(ttl=3600)
 def gd(s):
  try:
-  tk = yf.Ticker(s)
-  h = tk.history(period="2y")
+  tk = yf.Ticker(s); h = tk.history(period="2y")
   return {"h":h,"i":tk.info,"p":h['Close'].iloc[-1]}
  except: return None
 
 pr, sr = [], []
 for t in AL:
  d = gd(t)
- if d:
-  p, h, inf = d['p'], d['h'], d['i']
-  r = round(ta.rsi(h['Close'], 14).iloc[-1], 1)
-  m = h['Close'].tail(200).mean()
-  s = "WACHTEN"
-  if p > m:
-   s = "STABIEL"
-   if r < 42
+ if not d: continue
+ p, h, inf = d['p'], d['h'], d['i']
+ r = round(ta.rsi(h['Close'], 14).iloc[-1], 1)
+ m = h['Close'].tail(200).mean()
+ s = "WACHTEN"
+ if p > m: s = "STABIEL"
+ if p > m and r < 42: s = "KOOP"
+  
