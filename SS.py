@@ -7,12 +7,17 @@ import time
 st.set_page_config(page_title="Dividend Pro", layout="wide")
 
 # --- 1. JOUW PORTFOLIO INVULLEN ---
-# Formaat: 'TICKER': [Aantal, Aankoopprijs]
+# Formaat: 'TICKER': [Totaal Bedrag Geïnvesteerd, Gemiddelde Aankoopprijs]
 MIJN_PORTFOLIO = {
-    'KO': [10, 58.50],
-    'O': [25, 52.10],
-    'MSFT': [2, 395.00]
+    'IBM': [185.00, 288.11],   # Ik heb voor $500 gekocht tegen een prijs van 58.50
+    'DHr': [180.00, 220.58], # Ik heb voor $250 gekocht tegen een prijs van 180.20
+    'O': [135.00, 27.11]     # Ik heb voor $1000 gekocht tegen een prijs van 52.00
 }
+
+# --- REKENMODEL IN DE LOOP ---
+# (Dit deel zit al in de code verwerkt, maar zo werkt de som nu:)
+# Aantal = Totaal Bedrag / Aankoopprijs
+# Actuele Waarde = Aantal * Huidige Prijs
 
 st.title("🛡️ Dividend Trader & Portfolio")
 
@@ -115,3 +120,4 @@ if res:
 
 time.sleep(900)
 st.rerun()
+
