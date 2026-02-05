@@ -57,10 +57,34 @@ for t in AL:
  c = h['Close']
  p6 = round(((p-c.iloc[-126])/c.iloc[-126])*100,1)
  p1 = round(((p-c.iloc[-252])/c.iloc[-252])*100,1)
- s = "WAIT"
- if p > m:
-  s = "OK"
-  if r < 42: s = "BUY"
-  if r > 75: s = "HIGH"
+ 
+ # Status & Advies in compacte vorm
+ s = "BUY" if (p > m and r < 42) else ("HIGH" if r > 75 else "OK")
+ if p < m: s = "WAIT"
+ 
  a = "HOLD"
- if p < m: a =
+ if p < m: a = "SELL"
+ if r > 75: a = "TAKE"
+ 
+ for pi in st.session_state.pf:
+  if pi['T'] == t:
+   w = (pi['I']/pi['P'])*p
+   res = {"T":t,"P":p,"W$":round(w-pi['I'],2),"W%":round(((w-pi['I'])/pi['I'])*100,1),"6M":p6,"1Y":p1,"Status":s,"Advies":a}
+   pr.append(res)
+ if t in ML:
+  sr.append({"T":t,"P":p,"D%":round((inf.get('dividendYield',0) or 0)*100,2),"RSI":r,"Status":s})
+
+st.title("Stability Investor")
+t1, t2 = st.tabs(["Portfolio", "Scanner"])
+
+with t1:
+ if pr:
+  dfp = pd.DataFrame(pr)
+  st.metric("Total Profit", round(dfp['W$'].sum(), 2))
+  st.dataframe(dfp, hide_index=True)
+
+with t2:
+ if sr:
+  dfs = pd.DataFrame(sr)
+  st.subheader("Top 3 Low RSI")
+  top = dfs.sort_values('
