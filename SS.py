@@ -8,7 +8,7 @@ import os
 # 1. Pagina configuratie
 st.set_page_config(page_title="Stability Investor Pro", layout="wide")
 
-# Bestandsnaam voor opslag van jouw lange termijn posities
+# Bestandsnaam voor opslag
 PF_FILE = "stability_portfolio.csv"
 
 def load_pf():
@@ -35,15 +35,13 @@ with st.sidebar.form("invul_form", clear_on_submit=True):
     submit = st.form_submit_button("Voeg toe aan Portfolio")
 
 if submit and t_in:
-    # Voeg toe aan de lijst in het geheugen
     st.session_state.pf_data.append({
         "Ticker": t_in,
         "Inleg": b_in,
         "Prijs": p_in
     })
-    # Sla op in CSV voor de volgende keer
     save_pf(st.session_state.pf_data)
-    st.sidebar.success(f"{t_in} succesvol toegevoegd!")
+    st.sidebar.success(f"{t_in} toegevoegd!")
     st.rerun()
 
 if st.sidebar.button("🗑️ Wis Portfolio"):
@@ -56,7 +54,6 @@ if st.sidebar.button("🗑️ Wis Portfolio"):
 st.title("📈 Dividend Stability & Quality Scanner")
 st.markdown("*Focus op de lange termijn: Stabiliteit, MA200-trend en Payout Ratio.*")
 
-# De vaste lijst met kwaliteitsaandelen
 markt_tickers = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
     'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'MSFT', 'AAPL', 'IBM',
@@ -64,19 +61,39 @@ markt_tickers = [
     'NEE', 'PM', 'MO', 'BLK', 'V', 'MA', 'AVGO', 'TXN', 'JPM', 'SCHW'
 ]
 
-# Haal de tickers uit je eigen portfolio
 mijn_tickers = [str(p['Ticker']).upper() for p in st.session_state.pf_data]
-
-# Combineer alles tot een unieke lijst om te scannen
 alle_tickers = list(set(markt_tickers + mijn_tickers))
 
 @st.cache_data(ttl=3600)
 def get_stability_data(s):
     try:
         tk = yf.Ticker(s)
-        h = tk.history(period="2y") # 2 jaar historie voor MA200 berekening
-        if h.empty: return None
+        h = tk.history(period="2y")
+        if h.empty: 
+            return None
         i = tk.info
+        # De gecorrigeerde dictionary:
         return {
             "h": h, 
             "div": (i.get('dividendYield', 0) or 0) * 100,
+            "payout": (i.get('payoutRatio', 0) or 0) * 100,
+            "sector": i.get('sector', 'N/B'),
+            "price": h['Close'].iloc[-1]
+        }
+    except:
+        return None
+
+scanner_res, pf_res = [], []
+balk = st.progress(0)
+
+for n, s in enumerate(alle_tickers):
+    data = get_stability_data(s)
+    if data:
+        p, h = data['price'], data['h']
+        rsi = ta.rsi(h['Close'], length=14).iloc[-1]
+        ma200 = h['Close'].tail(200).mean()
+        ma50 = h['Close'].tail(50).mean()
+        
+        is_bullish = p > ma200 and ma50 > ma200
+        if is_bullish and rsi < 42: adv = "💎 STERKE KOOP"
+        elif is_bullish and rsi > 75: adv = "⚠️
