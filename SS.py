@@ -3,28 +3,51 @@ import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
 import time
+import os
 
-st.set_page_config(page_title="Dividend Pro", layout="wide")
+# 1. Pagina configuratie
+st.set_page_config(page_title="Dividend Trader Pro", layout="wide")
 
-# --- 1. JOUW PORTFOLIO INVULLEN ---
-# Formaat: 'TICKER': [Totaal Bedrag Geïnvesteerd, Gemiddelde Aankoopprijs]
-MIJN_PORTFOLIO = {
-    'IBM': [185.00, 288.11],   # Ik heb voor $500 gekocht tegen een prijs van 58.50
-    'DHR': [180.00, 220.58], # Ik heb voor $250 gekocht tegen een prijs van 180.20
-    'T': [135.00, 27.11]     # Ik heb voor $1000 gekocht tegen een prijs van 52.00
-}
+# Bestandsnaam voor opslag
+PF_FILE = "mijn_posities.csv"
 
-# --- REKENMODEL IN DE LOOP ---
-# (Dit deel zit al in de code verwerkt, maar zo werkt de som nu:)
-# Aantal = Totaal Bedrag / Aankoopprijs
-# Actuele Waarde = Aantal * Huidige Prijs
+# Functies voor dataopslag
+def laad_pf():
+    if os.path.exists(PF_FILE):
+        return pd.read_csv(PF_FILE).to_dict('records')
+    return []
 
-st.title("🛡️ Lange(re) Termijn Dividend Trader")
+def schrijf_pf(data):
+    pd.DataFrame(data).to_csv(PF_FILE, index=False)
 
-nu = time.strftime('%H:%M:%S')
-st.sidebar.write("Laatste update:", nu)
+# Sessiebeheer
+if 'mijn_data' not in st.session_state:
+    st.session_state.mijn_data = laad_pf()
 
-tickers = [
+# --- SIDEBAR: INTERACTIEVE INVULVELDEN ---
+st.sidebar.header("📥 Trade Invoeren (Trade 212)")
+with st.sidebar.form("invul_form", clear_on_submit=True):
+    t_in = st.text_input("Ticker (bijv. O of KO)").upper()
+    b_in = st.number_input("Ingelegd Bedrag ($)", min_value=0.0, step=10.0)
+    p_in = st.number_input("Gem. Aankoopprijs ($)", min_value=0.0, step=0.01)
+    stuur = st.form_submit_button("Voeg toe aan Portfolio")
+
+if stuur and t_in:
+    st.session_state.mijn_data.append({"Ticker": t_in, "Inleg": b_in, "Prijs": p_in})
+    schrijf_pf(st.session_state.mijn_data)
+    st.sidebar.success(f"{t_in} toegevoegd!")
+
+if st.sidebar.button("🗑️ Wis Portfolio"):
+    st.session_state.mijn_data = []
+    if os.path.exists(PF_FILE): os.remove(PF_FILE)
+    st.rerun()
+
+# --- MAIN APP ---
+st.title("🛡️ Dividend Trader & Portfolio")
+st.write("Laatste update:", time.strftime('%H:%M:%S'))
+
+# De 50 standaard tickers
+markt_tickers = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
     'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
     'HD', 'COST', 'LLY', 'PFE', 'MRK', 'DHR', 'UNH', 'BMY', 'AMGN', 'SBUX',
@@ -32,94 +55,78 @@ tickers = [
     'MO', 'SCHW', 'BLK', 'SPGI', 'V', 'MA', 'AVGO', 'TXN', 'NVDA', 'JPM'
 ]
 
+# Voeg portfolio tickers toe aan de scanlijst als ze er nog niet in staan
+alle_tickers = list(set(markt_tickers + [p['Ticker'] for p in st.session_state.mijn_data]))
+
 @st.cache_data(ttl=3600)
-def get_stock_info(s):
+def haal_data(s):
     try:
-        t = yf.Ticker(s)
-        h = t.history(period="1y")
+        tk = yf.Ticker(s)
+        h = tk.history(period="1y")
         if h.empty: return None
-        i = t.info
+        i = tk.info
         return {
-            "h": h,
-            "d": (i.get('dividendYield', 0) or 0) * 100,
-            "s": i.get('sector', 'Onbekend'),
-            "e": i.get('exchange', 'Beurs'),
-            "t": i.get('targetMeanPrice', None),
-            "p": h['Close'].iloc[-1]
+            "h": h, "d": (i.get('dividendYield', 0) or 0) * 100,
+            "s": i.get('sector', 'N/B'), "p": h['Close'].iloc[-1],
+            "t": i.get('targetMeanPrice', None)
         }
-    except:
-        return None
+    except: return None
 
-res = []
-port_res = []
-bar = st.progress(0)
+scanner_res, pf_res = [], []
+balk = st.progress(0)
 
-for i, s in enumerate(tickers):
-    data = get_stock_info(s)
+# De grote scan ronde
+for n, s in enumerate(alle_tickers):
+    data = haal_data(s)
     if data:
-        df, price = data['h'], data['p']
-        rsi = ta.rsi(df['Close'], length=14).iloc[-1]
-        m1y, m6m = df['Close'].mean(), df['Close'].tail(126).mean()
+        prijs, hist = data['p'], data['h']
+        rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
+        m1y, m6m = hist['Close'].mean(), hist['Close'].tail(126).mean()
         
-        t1y = "✅" if price > m1y else "❌"
-        t6m = "✅" if price > m6m else "❌"
-        
-        # Portfolio check
-        if s in MIJN_PORTFOLIO:
-            aantal, aankoop = MIJN_PORTFOLIO[s]
-            waarde = aantal * price
-            winst = waarde - (aantal * aankoop)
-            winst_perc = (winst / (aantal * aankoop)) * 100
-            port_res.append({
-                "Ticker": s, "Aantal": aantal, "Aankoop": aankoop,
-                "Huidig": round(price, 2), "Winst/Verlies": round(winst, 2),
-                "Rendement%": round(winst_perc, 1)
-            })
-
-        # Advies Logica
-        target = data['t']
-        upside = round(((target - price) / price) * 100, 1) if target and target > 0 else 0
-        if t1y == "✅" and t6m == "✅" and rsi < 45: adv = "🌟 KOOP"
+        # Trends & Advies
+        t1y, t6m = ("✅" if prijs > m1y else "❌"), ("✅" if prijs > m6m else "❌")
+        if t1y == "✅" and t6m == "✅" and rsi < 45: adv = "🌟 KOOP DIP"
         elif t1y == "✅" and rsi > 70: adv = "💰 WINST"
         elif t1y == "✅": adv = "🟢 HOLD"
         else: adv = "🔴 NEE"
 
-        res.append({
-            "Ticker": s, "Beurs": data['e'], "Sector": data['s'],
-            "Status": adv, "Prijs": round(price, 2), "Target": target,
-            "Upside%": upside, "Div%": round(data['d'], 2), "RSI": round(rsi, 1)
-        })
-    bar.progress((i + 1) / len(tickers))
+        # Check of ticker in portfolio zit
+        for p in st.session_state.mijn_data:
+            if p['Ticker'] == s:
+                waarde = (p['Inleg'] / p['Prijs']) * prijs
+                pf_res.append({
+                    "Ticker": s, "Inleg": p['Inleg'], "Waarde": round(waarde, 2),
+                    "Resultaat": round(waarde - p['Inleg'], 2), 
+                    "%": round(((waarde - p['Inleg'])/p['Inleg'])*100, 1),
+                    "RSI": round(rsi, 1), "Status": adv
+                })
+
+        # Alleen in scanner als het in de lijst van 50 staat
+        if s in markt_tickers:
+            scanner_res.append({
+                "Ticker": s, "Sector": data['s'], "Status": adv, 
+                "Prijs": round(prijs, 2), "Div%": round(data['d'], 2), "RSI": round(rsi, 1)
+            })
+    balk.progress((n + 1) / len(alle_tickers))
 
 # --- DASHBOARD WEERGAVE ---
 
-# 1. Portfolio Sectie
-if port_res:
-    st.subheader("📈 Mijn Portfolio Status")
-    pdf = pd.DataFrame(port_res)
-    total_winst = pdf['Winst/Verlies'].sum()
-    st.metric("Totaal Winst/Verlies", f"$ {total_winst:.2f}", delta=f"{total_winst:.2f}")
-    st.table(pdf) # Simpele tabel voor overzichtelijkheid
+# 1. Portfolio Overzicht
+if pf_res:
+    st.subheader("📊 Mijn Open Posities")
+    df_pf = pd.DataFrame(pf_res)
+    totaal = sum([x['Resultaat'] for x in pf_res])
+    st.metric("Totaal Winst/Verlies", f"$ {totaal:.2f}", delta=f"{totaal:.2f}")
+    st.dataframe(df_pf, use_container_width=True, hide_index=True)
 
 st.divider()
 
-# 2. Scanner Sectie
-st.subheader("🔍 Markt Scanner")
-if res:
-    final_df = pd.DataFrame(res).sort_values("Div%", ascending=False)
-    st.dataframe(
-        final_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Upside%": st.column_config.ProgressColumn("Upside", format="%d%%", min_value=-20, max_value=50),
-            "Prijs": st.column_config.NumberColumn(format="$ %.2f"),
-            "Target": st.column_config.NumberColumn(format="$ %.2f")
-        }
-    )
+# 2. Scanner Overzicht
+st.subheader("🔍 Markt Kansen (Top 50 Dividendaandelen)")
+if scanner_res:
+    df_sc = pd.DataFrame(scanner_res).sort_values("Div%", ascending=False)
+    st.dataframe(df_sc, use_container_width=True, hide_index=True)
 
+# Auto-refresh
 time.sleep(900)
 st.rerun()
-
-
-
