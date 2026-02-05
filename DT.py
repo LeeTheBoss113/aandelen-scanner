@@ -86,12 +86,20 @@ for t in AL:
 st.title("Stability Investor")
 t1, t2 = st.tabs(["Portfolio", "Scanner"])
 
+# Compacte kleurfunctie
+def c(v):
+ if v in ["BUY","OK"]: return "color:green"
+ if v in ["SELL","WAIT"]: return "color:red"
+ if v == "TAKE": return "color:orange"
+ return ""
+
 with t1:
  if pr:
   dfp = pd.DataFrame(pr)
   tot = dfp['W$'].sum()
   st.metric("Total Profit", round(tot, 2))
-  st.dataframe(dfp, hide_index=True)
+  # Kleur op Status en Advies
+  st.dataframe(dfp.style.map(c), hide_index=True)
 
 with t2:
  if sr:
@@ -103,4 +111,5 @@ with t2:
   for i, x in enumerate(top3.to_dict('records')):
    cl[i].metric(x['T'], x['P'], f"RSI: {x['R']}")
   st.divider()
-  st.dataframe(top, hide_index=True)
+  # Kleur op Status
+  st.dataframe(top.style.map(c), hide_index=True)
