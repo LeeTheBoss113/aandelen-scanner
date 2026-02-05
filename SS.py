@@ -5,14 +5,15 @@ import pandas_ta as ta
 import numpy as np
 import time
 
+# 1. Pagina instellingen
 st.set_page_config(page_title="Scanner", layout="wide")
 
-# 1. Simpele Titel & Tijd
+# 2. Titel en Tijd (zonder f-strings om fouten te voorkomen)
 st.title("🛡️ Dividend Trader")
-nu = time.strftime('%H:%M:%S')
-st.write("Laatste update:", nu)
+nu_tijd = time.strftime('%H:%M:%S')
+st.write("Laatste update om:", nu_tijd)
 
-# 2. De Lijst
+# 3. De Lijst met 50 Tickers
 tickers = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
     'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
@@ -27,13 +28,14 @@ def get_data(symbol):
         t = yf.Ticker(symbol)
         df = t.history(period="1y")
         if df.empty: return None, 0
-        div = (t.info.get('dividendYield', 0) or 0) * 100
+        info = t.info
+        div = (info.get('dividendYield', 0) or 0) * 100
         df['RSI'] = ta.rsi(df['Close'], length=14)
         return df, div
     except:
         return None, 0
 
-# 3. Analyse
+# 4. Analyse Loop
 rows = []
 bar = st.progress(0)
 
@@ -45,29 +47,34 @@ for i, sym in enumerate(tickers):
         m1y = df['Close'].mean()
         m6m = df['Close'].tail(126).mean()
         
-        t1y = "✅" if p > m1y else "❌"
-        t6m = "✅" if p > m6m else "❌"
+        t1y = "OK" if p > m1y else "X"
+        t6m = "OK" if p > m6m else "X"
         
-        if t1y == "✅" and t6m == "✅" and rsi < 45:
-            adv = "🌟 KOPEN"
-        elif t1y == "✅" and rsi > 70:
-            adv = "💰 WINST"
-        elif t1y == "✅":
-            adv = "🟢 HOLD"
+        # Simpele Advies Logica
+        if t1y == "OK" and t6m == "OK" and rsi < 45:
+            adv = "KOOP"
+        elif t1y == "OK" and rsi > 70:
+            adv = "WINST"
+        elif t1y == "OK":
+            adv = "HOLD"
         else:
-            adv = "🔴 NEE"
+            adv = "NEGEER"
 
         rows.append({
-            "Ticker": sym, "Advies": adv, "Div%": round(div, 2),
-            "RSI": round(rsi, 1), "6m": t6m, "1j": t1y
+            "Ticker": sym, 
+            "Status": adv, 
+            "Dividend%": round(div, 2),
+            "RSI": round(rsi, 1), 
+            "6m": t6m, 
+            "1j": t1y
         })
     bar.progress((i + 1) / len(tickers))
 
-# 4. Tabel
+# 5. Tabel tonen
 if rows:
-    res = pd.DataFrame(rows).sort_values("Div%", ascending=False)
+    res = pd.DataFrame(rows).sort_values("Dividend%", ascending=False)
     st.dataframe(res, use_container_width=True, height=800)
 
-# 5. Refresh
+# 6. Herladen
 time.sleep(900)
 st.rerun()
