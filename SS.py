@@ -80,15 +80,11 @@ for n, s in enumerate(alle_tickers):
         rsi_val = ta.rsi(h['Close'], length=14).iloc[-1] if len(h) > 14 else 50
         ma200 = h['Close'].tail(200).mean() if len(h) >= 200 else p
         
-        # Simpele status teksten om SyntaxErrors te voorkomen
-        if p > ma200 and rsi_val < 42: 
-            adv = "KOOP"
-        elif p > ma200 and rsi_val > 75: 
-            adv = "DUUR"
-        elif p > ma200: 
-            adv = "STABIEL"
-        else: 
-            adv = "WACHTEN"
+        # Status bepaling
+        is_bullish = p > ma200
+        if is_bullish and rsi_val < 42: adv = "KOOP"
+        elif is_bullish and rsi_val > 75: adv = "DUUR"
+        elif is_bullish: adv = "STABIEL"
+        else: adv = "WACHTEN"
 
-        for entry in st.session_state.pf_data:
-            if str(entry['Ticker']).upper() == s:
+        # --- PORTFOLIO LOGICA (Gecorrigeerde inspringing)
