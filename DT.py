@@ -1,0 +1,105 @@
+import streamlit as st
+import pandas as pd
+import yfinance as yf
+import pandas_ta as ta
+import time
+
+st.set_page_config(page_title="Active Dividend Trader", layout="wide")
+
+# --- 1. JOUW PORTFOLIO (Bedrag & Prijs) ---
+# Vul hier in: 'TICKER': [Totaal ingelegd bedrag, Gemiddelde aankoopprijs]
+MIJN_PORTFOLIO = {
+    'KO': [500.00, 58.50],
+    'O': [1000.00, 52.00],
+    'AAPL': [250.00, 185.00]
+}
+
+st.title("🛡️ Active Dividend Swing Trader")
+st.sidebar.info("Tip: Controleer dagelijks rond 16:30 (Opening US)")
+
+nu = time.strftime('%H:%M:%S')
+st.write("Laatste scan:", nu)
+
+tickers = [
+    'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
+    'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
+    'HD', 'COST', 'LLY', 'PFE', 'MRK', 'DHR', 'UNH', 'BMY', 'AMGN', 'SBUX',
+    'CAT', 'DE', 'HON', 'UPS', 'FDX', 'NEE', 'SO', 'D', 'DUK', 'PM',
+    'MO', 'SCHW', 'BLK', 'SPGI', 'V', 'MA', 'AVGO', 'TXN', 'NVDA', 'JPM'
+]
+
+@st.cache_data(ttl=3600)
+def get_data(s):
+    try:
+        t = yf.Ticker(s)
+        h = t.history(period="1y")
+        if h.empty: return None
+        inf = t.info
+        return {
+            "h": h, "d": (inf.get('dividendYield', 0) or 0) * 100,
+            "s": inf.get('sector', 'N/B'), "e": inf.get('exchange', 'Beurs'),
+            "t": inf.get('targetMeanPrice', None), "p": h['Close'].iloc[-1]
+        }
+    except: return None
+
+res, port_res = [], []
+bar = st.progress(0)
+
+for i, s in enumerate(tickers):
+    data = get_data(s)
+    if data:
+        df, price = data['h'], data['p']
+        rsi = ta.rsi(df['Close'], length=14).iloc[-1]
+        m1y, m6m = df['Close'].mean(), df['Close'].tail(126).mean()
+        
+        # Trends
+        t1y, t6m = ("✅" if price > m1y else "❌"), ("✅" if price > m6m else "❌")
+        
+        # Portfolio Logica (Trade 212 stijl)
+        if s in MIJN_PORTFOLIO:
+            inleg, aankoop = MIJN_PORTFOLIO[s]
+            aantal = inleg / aankoop
+            waarde = aantal * price
+            winst = waarde - inleg
+            port_res.append({
+                "Ticker": s, "Inleg": inleg, "Waarde": round(waarde, 2),
+                "Resultaat": round(winst, 2), "%": round((winst/inleg)*100, 1),
+                "RSI": round(rsi, 1)
+            })
+
+        # Advies Logica
+        target = data['t']
+        upside = round(((target-price)/price)*100, 1) if target and target > 0 else 0
+        if t1y == "✅" and t6m == "✅" and rsi < 45: adv = "🌟 KOOP DIP"
+        elif t1y == "✅" and rsi > 70: adv = "💰 WINST PAKKEN"
+        elif t1y == "✅": adv = "🟢 HOLD"
+        else: adv = "🔴 VERMIJDEN"
+
+        res.append({
+            "Ticker": s, "Beurs": data['e'], "Sector": data['s'], "Status": adv,
+            "Prijs": round(price, 2), "Target": target, "Upside%": upside,
+            "Div%": round(data['d'], 2), "RSI": round(rsi, 1)
+        })
+    bar.progress((i + 1) / len(tickers))
+
+# --- DASHBOARD ---
+if port_res:
+    st.subheader("📊 Mijn Open Posities")
+    pdf = pd.DataFrame(port_res)
+    tot_res = sum([x['Resultaat'] for x in port_res])
+    st.metric("Totaal Portfolio Resultaat", f"$ {tot_res:.2f}", delta=f"{tot_res:.2f}")
+    st.dataframe(pdf, use_container_width=True, hide_index=True)
+
+st.divider()
+st.subheader("🔍 Markt Kansen")
+if res:
+    df_f = pd.DataFrame(res).sort_values("Div%", ascending=False)
+    st.dataframe(df_f, use_container_width=True, hide_index=True,
+        column_config={
+            "Upside%": st.column_config.ProgressColumn("Upside", format="%d%%", min_value=-20, max_value=50),
+            "Prijs": st.column_config.NumberColumn(format="$ %.2f"),
+            "Target": st.column_config.NumberColumn(format="$ %.2f")
+        })
+
+time.sleep(900)
+st.rerun()
