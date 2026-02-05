@@ -2,19 +2,17 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
-import numpy as np
 import time
 
-# 1. Pagina instellingen
 st.set_page_config(page_title="Scanner", layout="wide")
-
-# 2. Titel en Tijd (zonder f-strings om fouten te voorkomen)
 st.title("🛡️ Dividend Trader")
-nu_tijd = time.strftime('%H:%M:%S')
-st.write("Update om:", nu_tijd)
 
-# 3. De Lijst met 50 Tickers
-tickers = [
+# Tijd zonder f-string
+nu = time.strftime('%H:%M:%S')
+st.write("Update:", nu)
+
+# De 50 Tickers
+t_list = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
     'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
     'HD', 'COST', 'LLY', 'PFE', 'MRK', 'DHR', 'UNH', 'BMY', 'AMGN', 'SBUX',
@@ -23,58 +21,37 @@ tickers = [
 ]
 
 @st.cache_data(ttl=600)
-def get_data(symbol):
+def get_data(s):
     try:
-        t = yf.Ticker(symbol)
-        df = t.history(period="1y")
-        if df.empty: return None, 0
-        info = t.info
-        div = (info.get('dividendYield', 0) or 0) * 100
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        return df, div
+        t = yf.Ticker(s)
+        d = t.history(period="1y")
+        if d.empty: return None, 0
+        dv = (t.info.get('dividendYield', 0) or 0) * 100
+        d['RSI'] = ta.rsi(d['Close'], length=14)
+        return d, dv
     except:
         return None, 0
 
-# 4. Analyse Loop
-rows = []
-bar = st.progress(0)
+res = []
+p_bar = st.progress(0)
 
-for i, sym in enumerate(tickers):
-    df, div = get_data(sym)
+for i, s in enumerate(t_list):
+    df, div = get_data(s)
     if df is not None and len(df) > 20:
-        p = df['Close'].iloc[-1]
-        rsi = df['RSI'].iloc[-1]
-        m1y = df['Close'].mean()
-        m6m = df['Close'].tail(126).mean()
+        c = df['Close'].iloc[-1]
+        r = df['RSI'].iloc[-1]
+        m1 = df['Close'].mean()
         
-        t1y = "OK" if p > m1y else "X"
-        t6m = "OK" if p > m6m else "X"
-        
-        # Simpele Advies Logica
-        if t1y == "OK" and t6m == "OK" and rsi < 45:
-            adv = "KOOP"
-        elif t1y == "OK" and rsi > 70:
-            adv = "WINST"
-        elif t1y == "OK":
-            adv = "HOLD"
-        else:
-            adv = "NEE"
+        # Simpele status
+        stat = "KOOP" if c > m1 and r < 45 else "HOLD"
+        if c < m1: stat = "NEGEER"
+        if r > 70: stat = "WINST"
 
-        rows.append({
-            "Ticker": sym, 
-            "Status": adv, 
-            "Div%": round(div, 2),
-            "RSI": round(rsi, 1), 
-            "6m": t6m, 
-            "1j": t1y
-        })
-    bar.progress((i + 1) / len(tickers))
+        res.append({"Ticker": s, "Status": stat, "Div%": round(div, 2), "RSI": round(r, 1)})
+    p_bar.progress((i + 1) / len(t_list))
 
-# 5. Tabel tonen
-if rows:
-    res = pd.DataFrame(rows).sort_values("Div%", ascending=False)
-    st.dataframe(res, use_container_width=True, height=800)
+if res:
+    st.dataframe(pd.DataFrame(res).sort_values("Div%", ascending=False), use_container_width=True)
 
-# 6. Herladen
 time.sleep(900)
 st.rerun()
