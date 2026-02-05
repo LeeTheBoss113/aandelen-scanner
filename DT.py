@@ -48,17 +48,14 @@ for t in AL:
  m = h['Close'].tail(200).mean()
  p6 = round(((p-h['Close'].iloc[-126])/h['Close'].iloc[-126])*100,1)
  p1 = round(((p-h['Close'].iloc[-252])/h['Close'].iloc[-252])*100,1)
- 
  s = "WAIT"
  if p > m:
   s = "OK"
   if r < 42: s = "BUY"
   if r > 75: s = "HIGH"
- 
  a = "HOLD"
  if p < m: a = "SELL"
  elif r > 75: a = "TAKE"
- 
  for pi in st.session_state.pf:
   if pi['T'] == t:
    w = (pi['I']/pi['P'])*p
@@ -71,8 +68,10 @@ t1, t2 = st.tabs(["Portfolio", "Scanner"])
 
 def stl(df):
  c = {"BUY":"color:green","SELL":"color:red","TAKE":"color:orange"}
- return df.style.apply(lambda x: [c.get(v, "") for v in x], axis=0)
+ try: return df.style.apply(lambda x: [c.get(v, "") for v in x], axis=0)
+ except: return df
 
 with t1:
  if pr:
-  dfp = pd.DataFrame(
+  dfp = pd.DataFrame(pr)
+  st.metric("Profit", round(dfp['W$'].sum
