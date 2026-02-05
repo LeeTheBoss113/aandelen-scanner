@@ -4,14 +4,12 @@ import yfinance as yf
 import pandas_ta as ta
 import time
 
-st.set_page_config(page_title="Dividend Scanner Pro", layout="wide")
+st.set_page_config(page_title="Dividend Pro", layout="wide")
 st.title("🛡️ Dividend Trader Dashboard")
 
-# Update tijd
 nu = time.strftime('%H:%M:%S')
 st.write("Laatste update:", nu)
 
-# De 50 Tickers
 tickers = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
     'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
@@ -24,84 +22,62 @@ tickers = [
 def get_stock_info(s):
     try:
         t = yf.Ticker(s)
-        hist = t.history(period="1y")
-        if hist.empty: return None
-        
-        info = t.info
+        h = t.history(period="1y")
+        if h.empty: return None
+        i = t.info
         return {
-            "hist": hist,
-            "div": (info.get('dividendYield', 0) or 0) * 100,
-            "sector": info.get('sector', 'Onbekend'),
-            "exchange": info.get('exchange', 'Onbekend'), # Haalt NYSE of NMS (Nasdaq) op
-            "target": info.get('targetMeanPrice', None),
-            "price": hist['Close'].iloc[-1]
+            "h": h,
+            "d": (i.get('dividendYield', 0) or 0) * 100,
+            "s": i.get('sector', 'Onbekend'),
+            "e": i.get('exchange', 'Beurs'),
+            "t": i.get('targetMeanPrice', None),
+            "p": h['Close'].iloc[-1]
         }
     except:
         return None
 
 res = []
-p_bar = st.progress(0)
+bar = st.progress(0)
 
 for i, s in enumerate(tickers):
     data = get_stock_info(s)
     if data:
-        df = data['hist']
-        price = data['price']
+        df, price = data['h'], data['p']
         rsi = ta.rsi(df['Close'], length=14).iloc[-1]
-        m1y = df['Close'].mean()
-        m6m = df['Close'].tail(126).mean()
+        m1y, m6m = df['Close'].mean(), df['Close'].tail(126).mean()
         
-        # Trend checks
         t1y = "✅" if price > m1y else "❌"
         t6m = "✅" if price > m6m else "❌"
         
-        # Koersdoel berekening
-        target = data['target']
-        potentieel = round(((target - price) / price) * 100, 1) if target and target > 0 else 0
+        target = data['t']
+        upside = round(((target - price) / price) * 100, 1) if target and target > 0 else 0
         
-        # Advies Logica
-        if t1y == "✅" and t6m == "✅" and rsi < 45:
-            stat = "🌟 KOOP"
-        elif t1y == "✅" and rsi > 70:
-            stat = "💰 WINST"
-        elif t1y == "✅":
-            stat = "🟢 HOLD"
-        else:
-            stat = "🔴 VERMIJDEN"
+        if t1y == "✅" and t6m == "✅" and rsi < 45: adv = "🌟 KOOP"
+        elif t1y == "✅" and rsi > 70: adv = "💰 WINST"
+        elif t1y == "✅": adv = "🟢 HOLD"
+        else: adv = "🔴 NEE"
 
         res.append({
-            "Ticker": s,
-            "Beurs": data['exchange'],
-            "Sector": data['sector'],
-            "Status": stat,
-            "Prijs": round(price, 2),
-            "Koersdoel": target,
-            "Potentieel %": potentieel,
-            "Div %": round(data['div'], 2),
-            "RSI": round(rsi, 1),
-            "6m": t6m,
-            "1j": t1y
+            "Ticker": s, "Beurs": data['e'], "Sector": data['s'],
+            "Status": adv, "Prijs": round(price, 2), "Target": target,
+            "Upside%": upside, "Div%": round(data['d'], 2), "RSI": round(rsi, 1),
+            "6m": t6m, "1j": t1y
         })
-    p_bar.progress((i + 1) / len(tickers))
+    bar.progress((i + 1) / len(tickers))
 
 if res:
-    df_final = pd.DataFrame(res).sort_values("Div %", ascending=False)
-    
-    # Gebruik van de uitgebreide st.dataframe mogelijkheden
+    final_df = pd.DataFrame(res).sort_values("Div%", ascending=False)
     st.dataframe(
-        df_final,
+        final_df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Beurs": st.column_config.TextColumn("Beurs", width="small"),
-            "Prijs": st.column_config.NumberColumn("Prijs ($)", format="$ %.2f"),
-            "Koersdoel": st.column_config.NumberColumn("Target ($)", format="$ %.2f"),
-            "Potentieel %": st.column_config.ProgressColumn(
-                "Upside",
-                help="Potentieel tot koersdoel",
-                format="%d%%",
-                min_value=-20,
-                max_value=50,
-            ),
-            "Div %": st.column_config.NumberColumn("Dividend", format="%.2f %%"),
-            "RSI
+            "Upside%": st.column_config.ProgressColumn("Upside", format="%d%%", min_value=-20, max_value=50),
+            "Prijs": st.column_config.NumberColumn(format="$ %.2f"),
+            "Target": st.column_config.NumberColumn(format="$ %.2f")
+        },
+        height=800
+    )
+
+time.sleep(900)
+st.rerun()
