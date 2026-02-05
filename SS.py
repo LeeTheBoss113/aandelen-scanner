@@ -11,7 +11,7 @@ st.set_page_config(page_title="Scanner", layout="wide")
 # 2. Titel en Tijd (zonder f-strings om fouten te voorkomen)
 st.title("🛡️ Dividend Trader")
 nu_tijd = time.strftime('%H:%M:%S')
-st.write("Laatste update om:", nu_tijd)
+st.write("Update om:", nu_tijd)
 
 # 3. De Lijst met 50 Tickers
 tickers = [
@@ -58,12 +58,12 @@ for i, sym in enumerate(tickers):
         elif t1y == "OK":
             adv = "HOLD"
         else:
-            adv = "NEGEER"
+            adv = "NEE"
 
         rows.append({
             "Ticker": sym, 
             "Status": adv, 
-            "Dividend%": round(div, 2),
+            "Div%": round(div, 2),
             "RSI": round(rsi, 1), 
             "6m": t6m, 
             "1j": t1y
@@ -72,7 +72,7 @@ for i, sym in enumerate(tickers):
 
 # 5. Tabel tonen
 if rows:
-    res = pd.DataFrame(rows).sort_values("Dividend%", ascending=False)
+    res = pd.DataFrame(rows).sort_values("Div%", ascending=False)
     st.dataframe(res, use_container_width=True, height=800)
 
 # 6. Herladen
