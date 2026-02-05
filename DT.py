@@ -104,11 +104,7 @@ st.title("🏦 Stability Investor Dashboard")
 
 tab1, tab2, tab3 = st.tabs(["📊 Mijn Portfolio", "🔍 Markt Scanner", "🛡️ Strategie Info"])
 
-# Hulpfunctie voor styling
+# Hulpfunctie voor styling (gecorrigeerd tegen afbreken)
 def style_df(df):
-    def color_status(val):
-        if val == "KOOP": return 'background-color: #d4edda; color: #155724; font-weight: bold;'
-        if val == "WACHTEN": return 'color: #721c24; background-color: #f8d7da;'
-        return ''
-    def color_payout(val):
-        return 'color: red' if val > 80 else 'color
+    def color_status(v):
+        if v == "KOOP": return 'background-color: #d4edda; color: #155724; font-weight:
