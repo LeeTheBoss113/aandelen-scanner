@@ -5,10 +5,19 @@ import pandas_ta as ta
 import time
 
 st.set_page_config(page_title="Dividend Pro", layout="wide")
-st.title("🛡️ Dividend Trader Dashboard")
+
+# --- 1. JOUW PORTFOLIO INVULLEN ---
+# Formaat: 'TICKER': [Aantal, Aankoopprijs]
+MIJN_PORTFOLIO = {
+    'KO': [10, 58.50],
+    'O': [25, 52.10],
+    'MSFT': [2, 395.00]
+}
+
+st.title("🛡️ Dividend Trader & Portfolio")
 
 nu = time.strftime('%H:%M:%S')
-st.write("Laatste update:", nu)
+st.sidebar.write("Laatste update:", nu)
 
 tickers = [
     'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
@@ -37,6 +46,7 @@ def get_stock_info(s):
         return None
 
 res = []
+port_res = []
 bar = st.progress(0)
 
 for i, s in enumerate(tickers):
@@ -49,9 +59,21 @@ for i, s in enumerate(tickers):
         t1y = "✅" if price > m1y else "❌"
         t6m = "✅" if price > m6m else "❌"
         
+        # Portfolio check
+        if s in MIJN_PORTFOLIO:
+            aantal, aankoop = MIJN_PORTFOLIO[s]
+            waarde = aantal * price
+            winst = waarde - (aantal * aankoop)
+            winst_perc = (winst / (aantal * aankoop)) * 100
+            port_res.append({
+                "Ticker": s, "Aantal": aantal, "Aankoop": aankoop,
+                "Huidig": round(price, 2), "Winst/Verlies": round(winst, 2),
+                "Rendement%": round(winst_perc, 1)
+            })
+
+        # Advies Logica
         target = data['t']
         upside = round(((target - price) / price) * 100, 1) if target and target > 0 else 0
-        
         if t1y == "✅" and t6m == "✅" and rsi < 45: adv = "🌟 KOOP"
         elif t1y == "✅" and rsi > 70: adv = "💰 WINST"
         elif t1y == "✅": adv = "🟢 HOLD"
@@ -60,11 +82,24 @@ for i, s in enumerate(tickers):
         res.append({
             "Ticker": s, "Beurs": data['e'], "Sector": data['s'],
             "Status": adv, "Prijs": round(price, 2), "Target": target,
-            "Upside%": upside, "Div%": round(data['d'], 2), "RSI": round(rsi, 1),
-            "6m": t6m, "1j": t1y
+            "Upside%": upside, "Div%": round(data['d'], 2), "RSI": round(rsi, 1)
         })
     bar.progress((i + 1) / len(tickers))
 
+# --- DASHBOARD WEERGAVE ---
+
+# 1. Portfolio Sectie
+if port_res:
+    st.subheader("📈 Mijn Portfolio Status")
+    pdf = pd.DataFrame(port_res)
+    total_winst = pdf['Winst/Verlies'].sum()
+    st.metric("Totaal Winst/Verlies", f"$ {total_winst:.2f}", delta=f"{total_winst:.2f}")
+    st.table(pdf) # Simpele tabel voor overzichtelijkheid
+
+st.divider()
+
+# 2. Scanner Sectie
+st.subheader("🔍 Markt Scanner")
 if res:
     final_df = pd.DataFrame(res).sort_values("Div%", ascending=False)
     st.dataframe(
@@ -75,8 +110,7 @@ if res:
             "Upside%": st.column_config.ProgressColumn("Upside", format="%d%%", min_value=-20, max_value=50),
             "Prijs": st.column_config.NumberColumn(format="$ %.2f"),
             "Target": st.column_config.NumberColumn(format="$ %.2f")
-        },
-        height=800
+        }
     )
 
 time.sleep(900)
