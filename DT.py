@@ -5,129 +5,142 @@ import pandas_ta as ta
 import time
 import os
 
-st.set_page_config(page_title="Active Trader", layout="wide")
+# --- 1. CONFIGURATIE & SETUP ---
+st.set_page_config(page_title="Stability Investor Pro", layout="wide")
 
-# --- BESTANDSLOGICA ---
-PORTFOLIO_FILE = "my_portfolio.csv"
+PF_FILE = "stability_portfolio.csv"
 
-def load_portfolio():
-    if os.path.exists(PORTFOLIO_FILE):
-        return pd.read_csv(PORTFOLIO_FILE).to_dict('records')
+def load_pf():
+    if os.path.exists(PF_FILE):
+        try: return pd.read_csv(PF_FILE).to_dict('records')
+        except: return []
     return []
 
-def save_portfolio(data):
-    pd.DataFrame(data).to_csv(PORTFOLIO_FILE, index=False)
+def save_pf(data):
+    pd.DataFrame(data).to_csv(PF_FILE, index=False)
 
-# Initialiseer sessie
-if 'portfolio' not in st.session_state:
-    st.session_state.portfolio = load_portfolio()
+if 'pf_data' not in st.session_state:
+    st.session_state.pf_data = load_pf()
 
-# --- SIDEBAR: PORTFOLIO BEHEER ---
-st.sidebar.header("📥 Portfolio Beheer")
-with st.sidebar.form("add_form", clear_on_submit=True):
-    new_ticker = st.text_input("Ticker (bijv. AAPL)").upper()
-    new_inleg = st.number_input("Ingelegd bedrag ($)", min_value=0.0, step=10.0)
-    new_prijs = st.number_input("Aankoopprijs ($)", min_value=0.0, step=0.1)
-    submit = st.form_submit_button("Voeg toe aan Portfolio")
+# --- 2. SIDEBAR (BEHEER & VERWIJDEREN) ---
+with st.sidebar:
+    st.header("⚙️ Portfolio Beheer")
+    
+    # Formulier om toe te voegen
+    with st.form("add_stock", clear_on_submit=True):
+        t_in = st.text_input("Ticker").upper().strip()
+        b_in = st.number_input("Inleg ($)", min_value=0.0, step=10.0)
+        p_in = st.number_input("Aankoopprijs ($)", min_value=0.01, step=0.1)
+        if st.form_submit_button("➕ Voeg toe"):
+            if t_in:
+                st.session_state.pf_data.append({"Ticker": t_in, "Inleg": b_in, "Prijs": p_in})
+                save_pf(st.session_state.pf_data)
+                st.rerun()
 
-if submit and new_ticker:
-    # Voeg toe aan lijst
-    st.session_state.portfolio.append({
-        "Ticker": new_ticker,
-        "Inleg": new_inleg,
-        "Aankoop": new_prijs
-    })
-    save_portfolio(st.session_state.portfolio)
-    st.sidebar.success(f"{new_ticker} opgeslagen!")
+    st.divider()
+    
+    # Individueel verwijderen
+    if st.session_state.pf_data:
+        st.subheader("🗑️ Verwijder Ticker")
+        for i, item in enumerate(st.session_state.pf_data):
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"**{item['Ticker']}** (${item['Inleg']})")
+            if col2.button("❌", key=f"del_{i}"):
+                st.session_state.pf_data.pop(i)
+                save_pf(st.session_state.pf_data)
+                st.rerun()
+    
+    if st.button("🚨 Wis Volledige Data"):
+        st.session_state.pf_data = []
+        if os.path.exists(PF_FILE): os.remove(PF_FILE)
+        st.rerun()
 
-if st.sidebar.button("🗑️ Wis hele Portfolio"):
-    st.session_state.portfolio = []
-    if os.path.exists(PORTFOLIO_FILE):
-        os.remove(PORTFOLIO_FILE)
-    st.rerun()
-
-# --- MAIN APP ---
-st.title("🛡️ Active Dividend Swing Trader")
-
-tickers = [
-    'KO', 'PEP', 'JNJ', 'O', 'PG', 'ABBV', 'CVX', 'XOM', 'MMM', 'T',
-    'VZ', 'WMT', 'LOW', 'TGT', 'ABT', 'MCD', 'ADBE', 'MSFT', 'AAPL', 'IBM',
-    'HD', 'COST', 'LLY', 'PFE', 'MRK', 'DHR', 'UNH', 'BMY', 'AMGN', 'SBUX',
-    'CAT', 'DE', 'HON', 'UPS', 'FDX', 'NEE', 'SO', 'D', 'DUK', 'PM',
-    'MO', 'SCHW', 'BLK', 'SPGI', 'V', 'MA', 'AVGO', 'TXN', 'NVDA', 'JPM'
-]
+# --- 3. DATA ENGINE ---
+markt_list = ['KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM','T','VZ','WMT','LOW','TGT','ABT','MCD','MSFT','AAPL','IBM','HD','COST','LLY','PFE','MRK','UNH','BMY','SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA','AVGO','TXN','JPM','SCHW']
+mijn_list = [p['Ticker'] for p in st.session_state.pf_data]
+alle_tickers = list(set(markt_list + mijn_list))
 
 @st.cache_data(ttl=3600)
-def get_data(s):
+def fetch_stock_data(s):
     try:
-        t = yf.Ticker(s)
-        h = t.history(period="1y")
+        tk = yf.Ticker(s)
+        h = tk.history(period="2y")
         if h.empty: return None
-        inf = t.info
-        return {
-            "h": h, "d": (inf.get('dividendYield', 0) or 0) * 100,
-            "s": inf.get('sector', 'N/B'), "e": inf.get('exchange', 'Beurs'),
-            "t": inf.get('targetMeanPrice', None), "p": h['Close'].iloc[-1]
-        }
+        return {"h": h, "info": tk.info, "price": h['Close'].iloc[-1]}
     except: return None
 
-res, port_res = [], []
-bar = st.progress(0)
+pf_results, market_results = [], []
+progress_bar = st.progress(0)
 
-# Verwerk alle tickers voor de scanner
-all_symbols = list(set(tickers + [p['Ticker'] for p in st.session_state.portfolio]))
-
-for i, s in enumerate(all_symbols):
-    data = get_data(s)
+for i, ticker in enumerate(alle_tickers):
+    data = fetch_stock_data(ticker)
     if data:
-        price = data['p']
-        df = data['h']
-        rsi = ta.rsi(df['Close'], length=14).iloc[-1]
+        p, h, inf = data['price'], data['h'], data['info']
+        rsi = ta.rsi(h['Close'], length=14).iloc[-1] if len(h) > 14 else 50
+        ma200 = h['Close'].tail(200).mean() if len(h) >= 200 else p
         
-        # Check of dit aandeel in ons portfolio zit
-        for p in st.session_state.portfolio:
-            if p['Ticker'] == s:
-                aantal = p['Inleg'] / p['Aankoop']
-                waarde = aantal * price
-                winst = waarde - p['Inleg']
-                port_res.append({
-                    "Ticker": s, "Inleg": p['Inleg'], "Waarde": round(waarde, 2),
-                    "Resultaat": round(winst, 2), "%": round((winst/p['Inleg'])*100, 1),
-                    "RSI": round(rsi, 1)
+        status = "STABIEL" if p > ma200 else "WACHTEN"
+        if p > ma200 and rsi < 42: status = "KOOP"
+        if p > ma200 and rsi > 75: status = "DUUR"
+
+        for p_item in st.session_state.pf_data:
+            if p_item['Ticker'] == ticker:
+                waarde = (p_item['Inleg'] / p_item['Prijs']) * p
+                pf_results.append({
+                    "Ticker": ticker, "Inleg": p_item['Inleg'], "Waarde": waarde,
+                    "Winst": waarde - p_item['Inleg'], "RSI": rsi, "Status": status
                 })
 
-        # Scanner logica (alleen voor de hoofdlijst)
-        if s in tickers:
-            m1y = df['Close'].mean()
-            m6m = df['Close'].tail(126).mean()
-            t1y, t6m = ("✅" if price > m1y else "❌"), ("✅" if price > m6m else "❌")
-            target = data['t']
-            upside = round(((target-price)/price)*100, 1) if target and target > 0 else 0
-            
-            if t1y == "✅" and t6m == "✅" and rsi < 45: adv = "🌟 KOOP DIP"
-            elif t1y == "✅" and rsi > 70: adv = "💰 WINST PAKKEN"
-            elif t1y == "✅": adv = "🟢 HOLD"
-            else: adv = "🔴 VERMIJDEN"
-
-            res.append({
-                "Ticker": s, "Status": adv, "Prijs": round(price, 2), 
-                "Upside%": upside, "Div%": round(data['d'], 2), "RSI": round(rsi, 1)
+        if ticker in markt_list:
+            market_results.append({
+                "Ticker": ticker, "Sector": inf.get('sector', 'N/B'), 
+                "Dividend": (inf.get('dividendYield', 0) or 0) * 100,
+                "Payout": (inf.get('payoutRatio', 0) or 0) * 100,
+                "Status": status, "RSI": rsi
             })
-    bar.progress((i + 1) / len(all_symbols))
+    progress_bar.progress((i + 1) / len(alle_tickers))
 
-# --- DASHBOARD WEERGAVE ---
-if port_res:
-    st.subheader("📊 Mijn Open Posities")
-    pdf = pd.DataFrame(port_res)
-    tot_res = sum([x['Resultaat'] for x in port_res])
-    st.metric("Totaal Resultaat", f"$ {tot_res:.2f}", delta=f"{tot_res:.2f}")
-    st.dataframe(pdf, use_container_width=True, hide_index=True)
+# --- 4. FRONT-END (TABS) ---
+st.title("🏦 Stability Investor Dashboard")
 
-st.divider()
-st.subheader("🔍 Markt Kansen")
-if res:
-    df_f = pd.DataFrame(res).sort_values("Div%", ascending=False)
-    st.dataframe(df_f, use_container_width=True, hide_index=True)
+tab1, tab2, tab3 = st.tabs(["📊 Mijn Portfolio", "🔍 Markt Scanner", "🛡️ Strategie Info"])
+
+with tab1:
+    if pf_results:
+        df_pf = pd.DataFrame(pf_results)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Totaal Investering", f"$ {df_pf['Inleg'].sum():.2f}")
+        c2.metric("Huidige Waarde", f"$ {df_pf['Waarde'].sum():.2f}")
+        c3.metric("Netto Resultaat", f"$ {df_pf['Winst'].sum():.2f}", delta=f"{df_pf['Winst'].sum():.2f}")
+        
+        st.dataframe(df_pf, use_container_width=True, hide_index=True, column_config={
+            "Inleg": st.column_config.NumberColumn(format="$ %.2f"),
+            "Waarde": st.column_config.NumberColumn(format="$ %.2f"),
+            "Winst": st.column_config.NumberColumn(format="$ %.2f"),
+            "RSI": st.column_config.ProgressColumn(min_value=0, max_value=100)
+        })
+    else:
+        st.info("Je portfolio is nog leeg. Voeg tickers toe in de zijbalk.")
+
+with tab2:
+    if market_results:
+        df_m = pd.DataFrame(market_results).sort_values("Dividend", ascending=False)
+        st.dataframe(df_m, use_container_width=True, hide_index=True, column_config={
+            "Dividend": st.column_config.NumberColumn(format="%.2f%%"),
+            "Payout": st.column_config.NumberColumn(format="%.1f%%"),
+            "RSI": st.column_config.ProgressColumn(min_value=0, max_value=100)
+        })
+
+with tab3:
+    st.subheader("Uitleg van de Indicatoren")
+    st.info("Dit systeem is gericht op stabiliteit en het vermijden van 'vangen van vallende messen'.")
+    st.markdown("""
+    * **MA 200 (Trend):** We kijken naar het 200-daags gemiddelde. Ligt de prijs daaronder? Dan blijven we eraf, hoe hoog het dividend ook is.
+    * **RSI (Timing):**
+        * **< 42 (KOOP):** Het aandeel is tijdelijk ondergewaardeerd binnen een stijgende trend.
+        * **> 75 (DUUR):** Het aandeel is 'overbought'. Niet het moment om nieuw kapitaal in te leggen.
+    * **Payout Ratio:** Een gezonde payout ratio (onder 80%) betekent dat het bedrijf het dividend ook in slechte tijden kan blijven betalen.
+    """)
 
 time.sleep(900)
 st.rerun()
