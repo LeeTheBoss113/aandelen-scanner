@@ -10,8 +10,8 @@ st.set_page_config(page_title="Dividend Pro", layout="wide")
 # Formaat: 'TICKER': [Totaal Bedrag Geïnvesteerd, Gemiddelde Aankoopprijs]
 MIJN_PORTFOLIO = {
     'IBM': [185.00, 288.11],   # Ik heb voor $500 gekocht tegen een prijs van 58.50
-    'DHr': [180.00, 220.58], # Ik heb voor $250 gekocht tegen een prijs van 180.20
-    'O': [135.00, 27.11]     # Ik heb voor $1000 gekocht tegen een prijs van 52.00
+    'DHR': [180.00, 220.58], # Ik heb voor $250 gekocht tegen een prijs van 180.20
+    'T': [135.00, 27.11]     # Ik heb voor $1000 gekocht tegen een prijs van 52.00
 }
 
 # --- REKENMODEL IN DE LOOP ---
@@ -120,4 +120,5 @@ if res:
 
 time.sleep(900)
 st.rerun()
+
 
