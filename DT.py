@@ -47,16 +47,20 @@ def gd(s):
   return {"h":h,"i":tk.info,"p":h['Close'].iloc[-1]}
  except: return None
 
+# Zoek het stukje waar 'sr' wordt gevuld en vervang door dit:
 pr, sr = [], []
 for t in AL:
  d = gd(t)
- if not d: continue
+ if not d or d['h'].empty: continue # Extra check op lege data
  p, h, inf = d['p'], d['h'], d['i']
  c = h['Close']
+ if len(c) < 252: continue # Sla aandelen met te weinig historie over
+ 
  r = round(ta.rsi(c, 14).iloc[-1], 1)
  m = c.tail(200).mean()
  p6 = round(((p-c.iloc[-126])/c.iloc[-126])*100, 1)
  p1 = round(((p-c.iloc[-252])/c.iloc[-252])*100, 1)
+ 
  s = "OK"
  if p > m and r < 42: s = "BUY"
  if r > 75: s = "HIGH"
@@ -64,14 +68,19 @@ for t in AL:
  a = "HOLD"
  if p < m: a = "SELL"
  if r > 75: a = "TAKE"
+ 
  for pi in st.session_state.pf:
   if pi['T'] == t:
    w = (pi['I']/pi['P'])*p
    res = {"T":t,"W$":round(w-pi['I'],2),"W%":round(((w-pi['I'])/pi['I'])*100,1),"Stat":s,"Adv":a}
    pr.append(res)
+ 
  if t in ML:
-  dy = inf.get('dividendYield', 0) or 0
+  dy = inf.get('dividendYield', 0)
+  if dy is None: dy = 0 # Voorkom NoneType error
   sr.append({"T":t,"P":p,"D":round(dy*100,2),"R":r,"S":s})
+
+# ... rest van de layout code ...
 
 # Layout aanpassen naar 2 kolommen
 st.title("🏦 Stability Investor Pro")
@@ -94,3 +103,4 @@ with R:
  st.header("🔍 Scanner")
  if sr:
   dfs = pd.DataFrame(sr)
+
