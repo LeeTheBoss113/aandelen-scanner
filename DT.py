@@ -18,15 +18,6 @@ def sv(d):
 
 if 'pf' not in st.session_state:
  st.session_state.pf = ld()
-# Backup lijst als CSV leeg is
-if not st.session_state.pf:
-    # Pas dit aan met jouw eigen aandelen!
-    backup = [
-        {"T": "KO", "I": 500.0, "P": 60.50},
-        {"T": "MSFT", "I": 1000.0, "P": 400.20}
-    ]
-    st.session_state.pf = backup
-    sv(backup)
 
 with st.sidebar:
  st.header("Beheer")
@@ -62,64 +53,44 @@ for t in AL:
  if not d: continue
  p, h, inf = d['p'], d['h'], d['i']
  c = h['Close']
- r = ta.rsi(c, 14).iloc[-1]
- r = round(r, 1)
+ r = round(ta.rsi(c, 14).iloc[-1], 1)
  m = c.tail(200).mean()
- p6 = (p-c.iloc[-126])/c.iloc[-126]
- p6 = round(p6*100, 1)
- p1 = (p-c.iloc[-252])/c.iloc[-252]
- p1 = round(p1*100, 1)
- 
+ p6 = round(((p-c.iloc[-126])/c.iloc[-126])*100, 1)
+ p1 = round(((p-c.iloc[-252])/c.iloc[-252])*100, 1)
  s = "OK"
  if p > m and r < 42: s = "BUY"
  if r > 75: s = "HIGH"
  if p < m: s = "WAIT"
- 
  a = "HOLD"
  if p < m: a = "SELL"
  if r > 75: a = "TAKE"
- 
  for pi in st.session_state.pf:
   if pi['T'] == t:
    w = (pi['I']/pi['P'])*p
-   w_abs = round(w-pi['I'], 2)
-   w_pc = (w-pi['I'])/pi['I']
-   w_pc = round(w_pc*100, 1)
-   res = {"T":t,"P":p,"W$":w_abs,"W%":w_pc,"6M":p6,"1Y":p1,"S":s,"A":a}
+   res = {"T":t,"W$":round(w-pi['I'],2),"W%":round(((w-pi['I'])/pi['I'])*100,1),"Stat":s,"Adv":a}
    pr.append(res)
  if t in ML:
-  dy = inf.get('dividendYield', 0)
-  if dy is None: dy = 0
+  dy = inf.get('dividendYield', 0) or 0
   sr.append({"T":t,"P":p,"D":round(dy*100,2),"R":r,"S":s})
 
-st.title("Stability Investor")
-t1, t2 = st.tabs(["Portfolio", "Scanner"])
+# Layout aanpassen naar 2 kolommen
+st.title("🏦 Stability Investor Pro")
+L, R = st.columns([1, 1])
 
-# Compacte kleurfunctie
-def c(v):
+def clr(v):
  if v in ["BUY","OK"]: return "color:green"
  if v in ["SELL","WAIT"]: return "color:red"
  if v == "TAKE": return "color:orange"
  return ""
 
-with t1:
+with L:
+ st.header("📊 Portfolio")
  if pr:
   dfp = pd.DataFrame(pr)
-  tot = dfp['W$'].sum()
-  st.metric("Total Profit", round(tot, 2))
-  # Kleur op Status en Advies
-  st.dataframe(dfp.style.map(c), hide_index=True)
+  st.metric("Total Profit", round(dfp['W$'].sum(), 2))
+  st.dataframe(dfp.style.map(clr), hide_index=True, use_container_width=True)
 
-with t2:
+with R:
+ st.header("🔍 Scanner")
  if sr:
   dfs = pd.DataFrame(sr)
-  st.subheader("Top 3 Low RSI")
-  top = dfs.sort_values(by='R')
-  top3 = top.head(3)
-  cl = st.columns(3)
-  for i, x in enumerate(top3.to_dict('records')):
-   cl[i].metric(x['T'], x['P'], f"RSI: {x['R']}")
-  st.divider()
-  # Kleur op Status
-  st.dataframe(top.style.map(c), hide_index=True)
-
