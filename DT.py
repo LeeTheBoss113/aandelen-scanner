@@ -18,6 +18,15 @@ def sv(d):
 
 if 'pf' not in st.session_state:
  st.session_state.pf = ld()
+# Backup lijst als CSV leeg is
+if not st.session_state.pf:
+    # Pas dit aan met jouw eigen aandelen!
+    backup = [
+        {"T": "KO", "I": 500.0, "P": 60.50},
+        {"T": "MSFT", "I": 1000.0, "P": 400.20}
+    ]
+    st.session_state.pf = backup
+    sv(backup)
 
 with st.sidebar:
  st.header("Beheer")
@@ -113,3 +122,4 @@ with t2:
   st.divider()
   # Kleur op Status
   st.dataframe(top.style.map(c), hide_index=True)
+
