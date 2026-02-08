@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pd
 import yfinance as yf
 import pandas_ta as ta
 import os
@@ -43,7 +43,7 @@ AL = list(set(ML + [str(x['T']).strip().upper() for x in st.session_state.pf]))
 def gd(s):
  try:
   tk = yf.Ticker(s)
-  h = tk.history(period="2y") # 2y nodig voor 1Y trend
+  h = tk.history(period="2y")
   if h.empty: return None
   return {"h":h,"i":tk.info,"p":float(h['Close'].iloc[-1])}
  except: return None
@@ -55,9 +55,8 @@ for t in AL:
   c = d['h']['Close']
   r = ta.rsi(c, 14).iloc[-1]
   m = c.tail(200).mean()
-  # Trend berekening
-  p6 = ((d['p'] - c.iloc[-126]) / c.iloc[-126]) * 100 if len(c)>126 else 0
-  p1 = ((d['p'] - c.iloc[-252]) / c.iloc[-252]) * 100 if len(c)>252 else 0
+  p6 = ((d['p']-c.iloc[-126])/c.iloc[-126])*100 if len(c)>126 else 0
+  p1 = ((d['p']-c.iloc[-252])/c.iloc[-252])*100 if len(c)>252 else 0
   s = "OK"
   if d['p'] > m and r < 42: s = "BUY"
   elif r > 75: s = "HIGH"
@@ -79,10 +78,14 @@ for t in ML:
   dy = d['inf'].get('dividendYield',0) or 0
   sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"6M":round(d['6m'],1),"R":round(d['r'],1),"S":d['s']})
 
+# UI
 st.title("🏦 Stability Investor")
 
-with st.expander("ℹ️ Legenda", expanded=False):
- st.write("**6M/1Y:** Trend afgelopen 6 mnd / 1 jaar (%)")
+# De complete Legenda
+with st.expander("ℹ️ Legenda & Afkortingen", expanded=True):
+ st.write("**T:** Ticker | **W$ / W%:** Winst ($ of %) | **P:** Prijs | **D:** Dividend %")
+ st.write("**6M / 1Y:** Trend 6 mnd / 1 jaar | **R:** RSI (Sterkte) | **S:** Status")
+ st.write("**Status:** BUY/OK (Groen), WAIT (Trendbreuk/Rood), HIGH (Duur/Oranje)")
 
 L, R = st.columns([1, 1.1])
 
