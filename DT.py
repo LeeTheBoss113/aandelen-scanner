@@ -62,6 +62,27 @@ with st.spinner('Data ophalen...'):
   if r > 75: s = "HIGH"
   if p < m: s = "WAIT"
   
+  # Verbeterde Portfolio berekening
+  for pi in st.session_state.pf:
+   if pi['T'].strip().upper() == t.strip().upper():
+    # Berekening winst/verlies
+    aantal = float(pi['I']) / float(pi['P'])
+    huidige_waarde = aantal * p
+    winst_abs = huidige_waarde - float(pi['I'])
+    winst_perc = (winst_abs / float(pi['I'])) * 100
+    
+    pr.append({
+        "T": t,
+        "W$": round(winst_abs, 2),
+        "W%": round(winst_perc, 2),
+        "Koers": round(p, 2),
+        "Stat": s
+    })
+  
+  if t in ML:
+   dy = inf.get('dividendYield', 0) or 0
+   sr.append({"T":t,"P":round(p,2),"D":round(dy*100,2),"R":r,"S":s})
+  
   # Portfolio vullen
   for pi in st.session_state.pf:
    if pi['T'] == t:
@@ -101,3 +122,4 @@ with R:
    c[idx].metric(x['T'], f"${x['P']}", f"RSI: {x['R']}")
   st.divider()
   st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
+
