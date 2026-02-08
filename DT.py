@@ -1,5 +1,5 @@
 import streamlit as st
-import pd
+import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
 import os
@@ -108,3 +108,4 @@ with R:
  if sr:
   dfs = pd.DataFrame(sr)
   st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True)
+
