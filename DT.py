@@ -49,7 +49,6 @@ def gd(s):
  except: return None
 
 db, pr, sr = {}, [], []
-
 for t in AL:
  d = gd(t)
  if d:
@@ -66,11 +65,8 @@ for pi in st.session_state.pf:
  tk = str(pi['T']).strip().upper()
  if tk in db:
   cur = db[tk]
-  inv = float(pi['I'])
-  buy = float(pi['P'])
-  now = float(cur['p'])
-  val = (inv / buy) * now
-  w_a = val - inv
+  inv, buy, now = float(pi['I']), float(pi['P']), float(cur['p'])
+  w_a = ((inv / buy) * now) - inv
   w_p = (w_a / inv) * 100
   pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,2),"P":round(now,2),"S":cur['s']})
 
@@ -80,7 +76,15 @@ for t in ML:
   dy = d['inf'].get('dividendYield',0) or 0
   sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"R":round(d['r'],1),"S":d['s']})
 
-st.title("Stability Investor")
+# UI
+st.title("🏦 Stability Investor")
+
+# Legenda Sectie
+with st.expander("ℹ️ Legenda & Afkortingen", expanded=True):
+ st.write("**T/Ticker:** Symbool | **W$:** Winst in Dollars | **W%:** Winst in %")
+ st.write("**P:** Huidige Prijs | **D:** Dividend % | **R:** RSI (Overbought/sold)")
+ st.write("**S/Status:** BUY (Koop), OK (Houd), WAIT (Trendbreuk), HIGH (Duur)")
+
 L, R = st.columns([1, 1])
 
 def clr(v):
@@ -93,8 +97,7 @@ with L:
  st.header("Portfolio")
  if pr:
   dfp = pd.DataFrame(pr)
-  tot = dfp['W$'].sum()
-  tot = round(tot, 2)
+  tot = round(dfp['W$'].sum(), 2)
   st.metric("Total Profit", tot)
   st.dataframe(dfp.style.map(clr), hide_index=True)
 
