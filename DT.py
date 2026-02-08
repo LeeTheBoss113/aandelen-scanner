@@ -43,7 +43,8 @@ AL = list(set(ML + [str(x['T']).strip().upper() for x in st.session_state.pf]))
 def gd(s):
  try:
   tk = yf.Ticker(s)
-  h = tk.history(period="1y")
+  # Gebruik '1mo' voor weekend-resistentie
+  h = tk.history(period="1mo")
   if h.empty: return None
   return {"h":h,"i":tk.info,"p":float(h['Close'].iloc[-1])}
  except: return None
@@ -54,7 +55,7 @@ for t in AL:
  if d:
   c = d['h']['Close']
   r = ta.rsi(c, 14).iloc[-1]
-  m = c.tail(200).mean()
+  m = c.tail(200).mean() if len(c) >= 200 else c.mean()
   s = "OK"
   if d['p'] > m and r < 42: s = "BUY"
   elif r > 75: s = "HIGH"
@@ -66,6 +67,7 @@ for pi in st.session_state.pf:
  if tk in db:
   cur = db[tk]
   inv, buy, now = float(pi['I']), float(pi['P']), float(cur['p'])
+  # De rekensom
   w_a = ((inv / buy) * now) - inv
   w_p = (w_a / inv) * 100
   pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,2),"P":round(now,2),"S":cur['s']})
@@ -76,14 +78,10 @@ for t in ML:
   dy = d['inf'].get('dividendYield',0) or 0
   sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"R":round(d['r'],1),"S":d['s']})
 
-# UI
 st.title("🏦 Stability Investor")
 
-# Legenda Sectie
-with st.expander("ℹ️ Legenda & Afkortingen", expanded=True):
- st.write("**T/Ticker:** Symbool | **W$:** Winst in Dollars | **W%:** Winst in %")
- st.write("**P:** Huidige Prijs | **D:** Dividend % | **R:** RSI (Overbought/sold)")
- st.write("**S/Status:** BUY (Koop), OK (Houd), WAIT (Trendbreuk), HIGH (Duur)")
+with st.expander("ℹ️ Legenda", expanded=False):
+ st.write("**W$:** Winst | **P:** Prijs | **D:** Div% | **R:** RSI | **S:** Status")
 
 L, R = st.columns([1, 1])
 
@@ -97,9 +95,11 @@ with L:
  st.header("Portfolio")
  if pr:
   dfp = pd.DataFrame(pr)
-  tot = round(dfp['W$'].sum(), 2)
-  st.metric("Total Profit", tot)
+  val_tot = dfp['W$'].sum()
+  st.metric("Total Profit ($)", f"{val_tot:.2f}")
   st.dataframe(dfp.style.map(clr), hide_index=True)
+ else:
+  st.warning("Geen data gevonden voor je tickers.")
 
 with R:
  st.header("Scanner")
