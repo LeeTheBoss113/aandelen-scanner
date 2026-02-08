@@ -36,53 +36,53 @@ with st.sidebar:
    sv(st.session_state.pf)
    st.rerun()
 
+# De lijst met tickers die de scanner MOET controleren
 ML = ['KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM','T','VZ','WMT','LOW','TGT','ABT','MCD','MSFT','AAPL','IBM','HD','COST','LLY','PFE','MRK','UNH','BMY','SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA','AVGO','TXN','JPM','SCHW']
 AL = list(set(ML + [x['T'] for x in st.session_state.pf]))
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900) # Verlaagd naar 15 min voor verse data
 def gd(s):
  try:
   tk = yf.Ticker(s)
-  h = tk.history(period="2y")
+  h = tk.history(period="1y") # 1 jaar is genoeg voor MA200
+  if h.empty: return None
   return {"h":h,"i":tk.info,"p":h['Close'].iloc[-1]}
  except: return None
 
-# Zoek het stukje waar 'sr' wordt gevuld en vervang door dit:
 pr, sr = [], []
-for t in AL:
- d = gd(t)
- if not d or d['h'].empty: continue # Extra check op lege data
- p, h, inf = d['p'], d['h'], d['i']
- c = h['Close']
- if len(c) < 252: continue # Sla aandelen met te weinig historie over
- 
- r = round(ta.rsi(c, 14).iloc[-1], 1)
- m = c.tail(200).mean()
- p6 = round(((p-c.iloc[-126])/c.iloc[-126])*100, 1)
- p1 = round(((p-c.iloc[-252])/c.iloc[-252])*100, 1)
- 
- s = "OK"
- if p > m and r < 42: s = "BUY"
- if r > 75: s = "HIGH"
- if p < m: s = "WAIT"
- a = "HOLD"
- if p < m: a = "SELL"
- if r > 75: a = "TAKE"
- 
- for pi in st.session_state.pf:
-  if pi['T'] == t:
-   w = (pi['I']/pi['P'])*p
-   res = {"T":t,"W$":round(w-pi['I'],2),"W%":round(((w-pi['I'])/pi['I'])*100,1),"Stat":s,"Adv":a}
-   pr.append(res)
- 
- if t in ML:
-  dy = inf.get('dividendYield', 0)
-  if dy is None: dy = 0 # Voorkom NoneType error
-  sr.append({"T":t,"P":p,"D":round(dy*100,2),"R":r,"S":s})
+# Feedback in de UI dat er gewerkt wordt
+with st.spinner('Scanner controleert tickers...'):
+ for t in AL:
+  d = gd(t)
+  if not d: continue
+  p, h, inf = d['p'], d['h'], d['i']
+  c = h['Close']
+  
+  # Basis berekeningen
+  r = round(ta.rsi(c, 14).iloc[-1], 1) if len(c)>14 else 50
+  m = c.tail(200).mean() if len(c)>200 else c.mean()
+  
+  s = "OK"
+  if p > m and r < 42: s = "BUY"
+  if r > 75: s = "HIGH"
+  if p < m: s = "WAIT"
+  
+  a = "HOLD"
+  if p < m: a = "SELL"
+  if r > 75: a = "TAKE"
+  
+  # Check of het in Portfolio zit
+  for pi in st.session_state.pf:
+   if pi['T'] == t:
+    w = (pi['I']/pi['P'])*p
+    pr.append({"T":t,"W$":round(w-pi['I'],2),"W%":round(((w-pi['I'])/pi['I'])*100,1),"Stat":s,"Adv":a})
+  
+  # Check of het in de Scanner lijst moet
+  if t in ML:
+   dy = inf.get('dividendYield', 0) or 0
+   sr.append({"T":t,"P":round(p,2),"D":round(dy*100,2),"R":r,"S":s})
 
-# ... rest van de layout code ...
-
-# Layout aanpassen naar 2 kolommen
+# Layout
 st.title("🏦 Stability Investor Pro")
 L, R = st.columns([1, 1])
 
@@ -98,9 +98,21 @@ with L:
   dfp = pd.DataFrame(pr)
   st.metric("Total Profit", round(dfp['W$'].sum(), 2))
   st.dataframe(dfp.style.map(clr), hide_index=True, use_container_width=True)
+ else:
+  st.info("Geen aandelen in portfolio.")
 
 with R:
  st.header("🔍 Scanner")
  if sr:
   dfs = pd.DataFrame(sr)
-
+  # Top 3 op basis van RSI
+  st.subheader("🔥 Beste Kansen")
+  top = dfs.sort_values(by='R').head(3)
+  c = st.columns(3)
+  for idx, x in enumerate(top.to_dict('records')):
+   c[idx].metric(x['T'], f"${x['P']}", f"RSI: {x['R']}")
+  
+  st.divider()
+  st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
+ else:
+  st.error("Scanner heeft geen data kunnen ophalen. Probeer 'Clear Cache' rechtsboven.")
