@@ -43,8 +43,7 @@ AL = list(set(ML + [str(x['T']).strip().upper() for x in st.session_state.pf]))
 def gd(s):
  try:
   tk = yf.Ticker(s)
-  # Gebruik '1mo' voor weekend-resistentie
-  h = tk.history(period="1mo")
+  h = tk.history(period="2y") # 2y nodig voor 1Y trend
   if h.empty: return None
   return {"h":h,"i":tk.info,"p":float(h['Close'].iloc[-1])}
  except: return None
@@ -55,35 +54,37 @@ for t in AL:
  if d:
   c = d['h']['Close']
   r = ta.rsi(c, 14).iloc[-1]
-  m = c.tail(200).mean() if len(c) >= 200 else c.mean()
+  m = c.tail(200).mean()
+  # Trend berekening
+  p6 = ((d['p'] - c.iloc[-126]) / c.iloc[-126]) * 100 if len(c)>126 else 0
+  p1 = ((d['p'] - c.iloc[-252]) / c.iloc[-252]) * 100 if len(c)>252 else 0
   s = "OK"
   if d['p'] > m and r < 42: s = "BUY"
   elif r > 75: s = "HIGH"
   elif d['p'] < m: s = "WAIT"
-  db[t] = {"p":d['p'],"r":r,"s":s,"inf":d['i']}
+  db[t] = {"p":d['p'],"r":r,"s":s,"inf":d['i'],"6m":p6,"1y":p1}
 
 for pi in st.session_state.pf:
  tk = str(pi['T']).strip().upper()
  if tk in db:
   cur = db[tk]
   inv, buy, now = float(pi['I']), float(pi['P']), float(cur['p'])
-  # De rekensom
   w_a = ((inv / buy) * now) - inv
   w_p = (w_a / inv) * 100
-  pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,2),"P":round(now,2),"S":cur['s']})
+  pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,1),"6M":round(cur['6m'],1),"1Y":round(cur['1y'],1),"S":cur['s']})
 
 for t in ML:
  if t in db:
   d = db[t]
   dy = d['inf'].get('dividendYield',0) or 0
-  sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"R":round(d['r'],1),"S":d['s']})
+  sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"6M":round(d['6m'],1),"R":round(d['r'],1),"S":d['s']})
 
 st.title("🏦 Stability Investor")
 
 with st.expander("ℹ️ Legenda", expanded=False):
- st.write("**W$:** Winst | **P:** Prijs | **D:** Div% | **R:** RSI | **S:** Status")
+ st.write("**6M/1Y:** Trend afgelopen 6 mnd / 1 jaar (%)")
 
-L, R = st.columns([1, 1])
+L, R = st.columns([1, 1.1])
 
 def clr(v):
  if v in ["BUY","OK"]: return "color:green"
@@ -95,11 +96,9 @@ with L:
  st.header("Portfolio")
  if pr:
   dfp = pd.DataFrame(pr)
-  val_tot = dfp['W$'].sum()
-  st.metric("Total Profit ($)", f"{val_tot:.2f}")
+  tot = round(dfp['W$'].sum(), 2)
+  st.metric("Total Profit ($)", f"{tot:.2f}")
   st.dataframe(dfp.style.map(clr), hide_index=True)
- else:
-  st.warning("Geen data gevonden voor je tickers.")
 
 with R:
  st.header("Scanner")
