@@ -22,7 +22,7 @@ if 'pf' not in st.session_state:
 with st.sidebar:
  st.header("Beheer")
  with st.form("a", clear_on_submit=True):
-  t = st.text_input("Ticker").upper().strip()
+  t = st.text_input("Ticker (bv. ASML.AS of KO)").upper().strip()
   i = st.number_input("Inleg")
   p = st.number_input("Koers")
   if st.form_submit_button("OK"):
@@ -36,7 +36,8 @@ with st.sidebar:
    sv(st.session_state.pf)
    st.rerun()
 
-ML = ['KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','MMM','T','VZ','WMT','LOW','TGT','ABT','MCD','MSFT','AAPL','IBM','HD','COST','LLY','PFE','MRK','UNH','BMY','SBUX','CAT','DE','NEE','PM','MO','BLK','V','MA','AVGO','TXN','JPM','SCHW']
+# Master List met NL aandelen toegevoegd (.AS)
+ML = ['ASML.AS','SHELL.AS','UNA.AS','ABN.AS','INGA.AS','KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','T','VZ','WMT','LOW','TGT','MSFT','AAPL','HD','COST','LLY','UNH','SBUX','CAT','V','MA','AVGO','JPM']
 AL = list(set(ML + [str(x['T']).strip().upper() for x in st.session_state.pf]))
 
 @st.cache_data(ttl=900)
@@ -78,14 +79,11 @@ for t in ML:
   dy = d['inf'].get('dividendYield',0) or 0
   sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"6M":round(d['6m'],1),"R":round(d['r'],1),"S":d['s']})
 
-# UI
 st.title("🏦 Stability Investor")
 
-# De complete Legenda
 with st.expander("ℹ️ Legenda & Afkortingen", expanded=True):
- st.write("**T:** Ticker | **W$ / W%:** Winst ($ of %) | **P:** Prijs | **D:** Dividend %")
- st.write("**6M / 1Y:** Trend 6 mnd / 1 jaar | **R:** RSI (Sterkte) | **S:** Status")
- st.write("**Status:** BUY/OK (Groen), WAIT (Trendbreuk/Rood), HIGH (Duur/Oranje)")
+ st.write("**T:** Ticker (.AS = Amsterdam) | **W$ / W%:** Winst | **P:** Prijs | **D:** Div %")
+ st.write("**6M / 1Y:** Trend 6 mnd / 1 jaar | **R:** RSI (Koopkracht) | **S:** Status")
 
 L, R = st.columns([1, 1.1])
 
@@ -100,7 +98,7 @@ with L:
  if pr:
   dfp = pd.DataFrame(pr)
   tot = round(dfp['W$'].sum(), 2)
-  st.metric("Total Profit ($)", f"{tot:.2f}")
+  st.metric("Total Profit ($/€)", f"{tot:.2f}")
   st.dataframe(dfp.style.map(clr), hide_index=True)
 
 with R:
@@ -108,4 +106,3 @@ with R:
  if sr:
   dfs = pd.DataFrame(sr)
   st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True)
-
