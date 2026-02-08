@@ -23,11 +23,11 @@ with st.sidebar:
  st.header("Beheer")
  with st.form("a", clear_on_submit=True):
   t = st.text_input("Ticker").upper().strip()
-  i = st.number_input("Inleg", format="%.2f")
-  p = st.number_input("Aankoopkoers", format="%.2f")
+  i = st.number_input("Inleg")
+  p = st.number_input("Koers")
   if st.form_submit_button("OK"):
    if t:
-    st.session_state.pf.append({"T":t,"I":float(i),"P":float(p)})
+    st.session_state.pf.append({"T":t,"I":i,"P":p})
     sv(st.session_state.pf)
     st.rerun()
  for n, m in enumerate(st.session_state.pf):
@@ -50,41 +50,38 @@ def gd(s):
 
 db, pr, sr = {}, [], []
 
-with st.spinner('Loading...'):
- for t in AL:
-  d = gd(t)
-  if d:
-   c = d['h']['Close']
-   r = ta.rsi(c, 14).iloc[-1]
-   m = c.tail(200).mean()
-   s = "OK"
-   if d['p'] > m and r < 42: s = "BUY"
-   elif r > 75: s = "HIGH"
-   elif d['p'] < m: s = "WAIT"
-   db[t] = {"p":d['p'],"r":r,"s":s,"inf":d['i']}
+for t in AL:
+ d = gd(t)
+ if d:
+  c = d['h']['Close']
+  r = ta.rsi(c, 14).iloc[-1]
+  m = c.tail(200).mean()
+  s = "OK"
+  if d['p'] > m and r < 42: s = "BUY"
+  elif r > 75: s = "HIGH"
+  elif d['p'] < m: s = "WAIT"
+  db[t] = {"p":d['p'],"r":r,"s":s,"inf":d['i']}
 
 for pi in st.session_state.pf:
  tk = str(pi['T']).strip().upper()
  if tk in db:
   cur = db[tk]
-  # Directe berekening
-  inleg = float(pi['I'])
-  koop = float(pi['P'])
-  nu = float(cur['p'])
-  
-  winst = (inleg / koop * nu) - inleg
-  perc = (winst / inleg) * 100
-  
-  pr.append({
-   "T": tk,
-   "W$": round(winst, 2),
-   "W%": round(perc, 2),
-   "Prijs": round(nu, 2),
-   "S": cur['s']
-  })
+  inv = float(pi['I'])
+  buy = float(pi['P'])
+  now = float(cur['p'])
+  val = (inv / buy) * now
+  w_a = val - inv
+  w_p = (w_a / inv) * 100
+  pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,2),"P":round(now,2),"S":cur['s']})
+
+for t in ML:
+ if t in db:
+  d = db[t]
+  dy = d['inf'].get('dividendYield',0) or 0
+  sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"R":round(d['r'],1),"S":d['s']})
 
 st.title("Stability Investor")
-L, R = st.columns([1, 1.2])
+L, R = st.columns([1, 1])
 
 def clr(v):
  if v in ["BUY","OK"]: return "color:green"
@@ -96,4 +93,13 @@ with L:
  st.header("Portfolio")
  if pr:
   dfp = pd.DataFrame(pr)
-  st.metric("Total Profit", f"$ {round(
+  tot = dfp['W$'].sum()
+  tot = round(tot, 2)
+  st.metric("Total Profit", tot)
+  st.dataframe(dfp.style.map(clr), hide_index=True)
+
+with R:
+ st.header("Scanner")
+ if sr:
+  dfs = pd.DataFrame(sr)
+  st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True)
