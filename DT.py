@@ -20,19 +20,34 @@ def load_data():
     try:
         r = requests.get(API_URL)
         data = r.json()
+        
+        # Debugging: laat in de app zien wat er binnenkomt (verwijder dit later)
+        # st.write(data) 
+        
         if not data or len(data) < 2: 
             return pd.DataFrame(columns=["T", "I", "P"])
         
-        # Data inladen en dwingen naar juiste types
-        df = pd.DataFrame(data[1:], columns=["T", "I", "P"])
+        # We negeren de namen die Google geeft en dwingen onze eigen namen af
+        # We pakken alles vanaf de tweede rij (data[1:])
+        df = pd.DataFrame(data[1:])
+        
+        # Pak alleen de eerste 3 kolommen voor het geval er meer in de sheet staat
+        df = df.iloc[:, :3] 
+        df.columns = ["T", "I", "P"]
+        
+        # Schoon de data op
+        df['T'] = df['T'].astype(str).str.upper().str.strip()
         df['I'] = pd.to_numeric(df['I'], errors='coerce')
         df['P'] = pd.to_numeric(df['P'], errors='coerce')
-        df = df.dropna(subset=['T'])
+        
+        # Verwijder rijen waar de Ticker leeg is of Inleg geen getal is
+        df = df.dropna(subset=['T', 'I'])
+        df = df[df['T'] != "NONE"]
+        
         return df
-    except:
+    except Exception as e:
+        st.error(f"Fout bij ophalen: {e}")
         return pd.DataFrame(columns=["T", "I", "P"])
-
-df_pf = load_data()
 
 # --- SIDEBAR (BEHEER) ---
 with st.sidebar:
@@ -134,3 +149,4 @@ with R:
         dfs = pd.DataFrame(sr)
         # Sorteer op RSI: de laagste (meest 'oversold') bovenaan
         st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
+
