@@ -11,6 +11,11 @@ st.set_page_config(layout="wide", page_title="Stability Investor Pro")
 # PLAK HIER DE URL VAN JE GOOGLE APPS SCRIPT:
 API_URL = "https://script.google.com/macros/s/AKfycbwerCvLw5gKdaXnc2iHpfEy97k98iz81Vy-gnojXBoj77d2DeLEzrcabnA1rnSoomfa_Q/exec"
 
+
+# --- CONFIG ---
+# PLAK HIER DE URL VAN JE GOOGLE APPS SCRIPT:
+API_URL = "JOUW_APPS_SCRIPT_URL_HIER"
+
 def load_data():
     try:
         r = requests.get(API_URL)
@@ -18,24 +23,16 @@ def load_data():
         if not data or len(data) < 2: 
             return pd.DataFrame(columns=["T", "I", "P"])
         
-        # We pakken de data vanaf de tweede rij (data[1:]) 
-        # en dwingen de namen T, I, P af.
+        # Data inladen en dwingen naar juiste types
         df = pd.DataFrame(data[1:], columns=["T", "I", "P"])
-        
-        # Cruciaal: Verwijder eventuele volledig lege rijen
+        df['I'] = pd.to_numeric(df['I'], errors='coerce')
+        df['P'] = pd.to_numeric(df['P'], errors='coerce')
         df = df.dropna(subset=['T'])
         return df
-    except Exception as e:
-        st.error(f"Leesfout: {e}")
+    except:
         return pd.DataFrame(columns=["T", "I", "P"])
 
 df_pf = load_data()
-
-# Check of er data is (voor debugging)
-if not df_pf.empty:
-    st.sidebar.success(f"{len(df_pf)} posities geladen")
-else:
-    st.sidebar.warning("Geen posities gevonden in de Sheet")
 
 # --- SIDEBAR (BEHEER) ---
 with st.sidebar:
@@ -47,20 +44,23 @@ with st.sidebar:
         if st.form_submit_button("Toevoegen"):
             if t and p > 0:
                 requests.post(API_URL, data=json.dumps({"ticker":t, "inleg":i, "koers":p}))
-                st.success(f"{t} toegevoegd aan Google!")
+                st.success(f"{t} toegevoegd!")
                 st.rerun()
 
     st.divider()
-    st.subheader("Huidige Posities")
-    for index, row in df_pf.iterrows():
-        # Verwijderknop per ticker
-        if st.button(f"🗑️ Verwijder {row['T']}", key=f"del{index}"):
-            requests.post(API_URL, data=json.dumps({"method":"delete", "ticker":row['T']}))
-            st.rerun()
+    if not df_pf.empty:
+        st.subheader("Huidige Posities")
+        for index, row in df_pf.iterrows():
+            if st.button(f"🗑️ Verwijder {row['T']}", key=f"del{index}"):
+                requests.post(API_URL, data=json.dumps({"method":"delete", "ticker":row['T']}))
+                st.rerun()
 
-# --- ANALYSE LOGICA ---
-# Uitgebreide lijst met kwaliteits-tickers
-ML = ['ASML.AS','SHELL.AS','UNA.AS','ABN.AS','INGA.AS','ADYEN.AS','KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','T','VZ','WMT','LOW','TGT','MSFT','AAPL','HD','COST','LLY','UNH','SBUX','CAT','V','MA','AVGO','JPM']
+# --- ANALYSE LOGICA (UITGEBREIDE LIJST) ---
+# Hier staan nu 20+ top aandelen voor de scanner
+ML = [
+    'ASML.AS','SHELL.AS','UNA.AS','ABN.AS','INGA.AS','ADYEN.AS','DSM.AS','REL.AS', # NL
+    'KO','PEP','JNJ','O','PG','WMT','MSFT','AAPL','LLY','V','MA','COST','ABBV','JPM','MCD' # US
+]
 AL = list(set(ML + df_pf['T'].tolist()))
 
 @st.cache_data(ttl=600)
@@ -89,22 +89,19 @@ with st.spinner('Markt scannen...'):
             
             db[t] = {"p":d['p'], "r":rsi, "s":status, "inf":d['i'], "6m":p6m}
 
-# Portfolio verwerken
+# Portfolio resultaten (berekenen met data uit Sheets)
 for _, row in df_pf.iterrows():
-    t = row['T']
+    t = str(row['T']).strip().upper()
     if t in db:
         d = db[t]
         try:
-            # Forceer getallen om rekenfouten te voorkomen
-            inv = float(row['I'])
-            buy = float(row['P'])
-            now = d['p']
+            inv, buy, now = float(row['I']), float(row['P']), d['p']
             w_a = ((inv / buy) * now) - inv
             w_p = (w_a / inv) * 100
             pr.append({"T":t, "W$":round(w_a,2), "W%":round(w_p,1), "6M":round(d['6m'],1), "S":d['s']})
         except: continue
 
-# Scanner verwerken
+# Scanner resultaten (gesorteerd op RSI voor koopkansen)
 for t in ML:
     if t in db:
         d = db[t]
@@ -129,12 +126,11 @@ with L:
         st.metric("Totaal Resultaat", f"€ {dfp['W$'].sum():.2f}")
         st.dataframe(dfp.sort_values(by='W%').style.map(clr), hide_index=True, use_container_width=True)
     else:
-        st.info("Geen actieve posities gevonden in Google Sheets.")
+        st.info("Geen actieve posities gevonden. Controleer Google Sheets.")
 
 with R:
     st.header("🔍 Beste Koopkansen")
     if sr:
         dfs = pd.DataFrame(sr)
+        # Sorteer op RSI: de laagste (meest 'oversold') bovenaan
         st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
-
-
