@@ -8,7 +8,7 @@ import json
 st.set_page_config(layout="wide", page_title="Stability Investor Pro")
 
 # PLAK HIER DE URL VAN JE GOOGLE APPS SCRIPT:
-API_URL = "JOUW_APPS_SCRIPT_URL_HIER"
+API_URL = "https://script.google.com/macros/s/AKfycbxlP2U3_PsLajE1cjn3ZC4G4d7S9hNcSya1bwR_Jk3WFBoRdPpmKFJrtv_Rhb5As54N/exec"
 
 def load_data():
     try:
@@ -83,3 +83,4 @@ with col1:
 with col2:
     st.header("Scanner")
     if sr: st.dataframe(pd.DataFrame(sr), hide_index=True)
+
