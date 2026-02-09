@@ -7,6 +7,13 @@ import os
 st.set_page_config(layout="wide", page_title="Stability Investor Pro")
 F = "stability_portfolio.csv"
 
+# --- GOOGLE SHEETS CONFIG ---
+# PLAK HIER JOUW LINK:
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1WtYIzcqUoUnCPq0LI0rjt_6QyoPQis0YsMTV8gqvrnk/edit?usp=sharing/export?format=csv"
+# Voor schrijven naar Sheets gebruiken we de gspread bibliotheek of 
+# we blijven voor nu even bij de CSV backup knop terwijl we lezen van Sheets.
+
+
 # --- DATA OPSLAG LOGICA ---
 def ld():
     # Check eerst of het bestand bestaat
@@ -128,3 +135,4 @@ with R:
     if sr:
         dfs = pd.DataFrame(sr)
         st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
+
