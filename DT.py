@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
-import os
+from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(layout="wide", page_title="Stability Investor Pro")
-F = "stability_portfolio.csv"
 
 # --- GOOGLE SHEETS CONNECTIE ---
 # PLAK HIER JOUW VOLLEDIGE GOOGLE SHEETS URL:
@@ -13,59 +12,39 @@ URL = "JOUW_GOOGLE_SHEET_URL_HIER"
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- DATA OPSLAG LOGICA ---
-def ld():
-    # Check eerst of het bestand bestaat
-    if os.path.exists(F):
-        try:
-            return pd.read_csv(F).to_dict('records')
-        except:
-            return []
-    return []
+def load_data():
+    try:
+        return conn.read(spreadsheet=URL, ttl="0")
+    except:
+        return pd.DataFrame(columns=["T", "I", "P"])
 
-def sv(d):
-    df = pd.DataFrame(d)
-    df.to_csv(F, index=False)
-    # Ook opslaan in session_state als backup
-    st.session_state.pf = d
-
-# Initialiseer portfolio in de sessie
-if 'pf' not in st.session_state:
-    st.session_state.pf = ld()
+df_pf = load_data()
 
 with st.sidebar:
     st.header("Beheer")
-    with st.form("a", clear_on_submit=True):
+    with st.form("add_form", clear_on_submit=True):
         t = st.text_input("Ticker (bv. ASML.AS)").upper().strip()
         i = st.number_input("Inleg (€/$)")
         p = st.number_input("Aankoopkoers")
         if st.form_submit_button("Toevoegen"):
-            if t:
-                # Toevoegen aan lokale lijst
-                new_data = st.session_state.pf + [{"T":t,"I":i,"P":p}]
-                sv(new_data)
+            if t and p > 0:
+                new_row = pd.DataFrame([{"T": t, "I": i, "P": p}])
+                updated_df = pd.concat([df_pf, new_row], ignore_index=True)
+                conn.update(spreadsheet=URL, data=updated_df)
+                st.success(f"{t} toegevoegd!")
                 st.rerun()
-    
-    # Download backup knop (veiligheid voor Streamlit Cloud)
-    if st.session_state.pf:
-        df_download = pd.DataFrame(st.session_state.pf)
-        csv = df_download.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Portfolio Backup",
-            data=csv,
-            file_name='my_portfolio.csv',
-            mime='text/csv',
-        )
 
-    for n, m in enumerate(st.session_state.pf):
-        if st.sidebar.button(f"Verwijder {m['T']}", key=f"d{n}"):
-            st.session_state.pf.pop(n)
-            sv(st.session_state.pf)
+    st.divider()
+    for index, row in df_pf.iterrows():
+        if st.button(f"🗑️ {row['T']}", key=f"del{index}"):
+            updated_df = df_pf.drop(index)
+            conn.update(spreadsheet=URL, data=updated_df)
             st.rerun()
 
-# --- DATA OPHALEN ---
-ML = ['ASML.AS','SHELL.AS','UNA.AS','ABN.AS','INGA.AS','ADYEN.AS','KO','PEP','JNJ','O','PG','ABBV','CVX','XOM','T','VZ','WMT','LOW','TGT','MSFT','AAPL','HD','COST','LLY','UNH','SBUX','CAT','V','MA','AVGO','JPM']
-AL = list(set(ML + [str(x['T']).strip().upper() for x in st.session_state.pf]))
+# --- ANALYSE LOGICA ---
+ML = ['ASML.AS','SHELL.AS','UNA.AS','INGA.AS','KO','PEP','JNJ','O','PG','MSFT','AAPL','LLY','V','MA','AVGO']
+# Combineer Masterlist met jouw Portfolio Tickers
+AL = list(set(ML + df_pf['T'].tolist()))
 
 @st.cache_data(ttl=900)
 def gd(s):
@@ -73,43 +52,46 @@ def gd(s):
         tk = yf.Ticker(s)
         h = tk.history(period="2y")
         if h.empty: return None
-        return {"h":h,"i":tk.info,"p":float(h['Close'].iloc[-1])}
+        return {"h":h, "i":tk.info, "p":float(h['Close'].iloc[-1])}
     except: return None
 
 db, pr, sr = {}, [], []
-with st.spinner('Scannen van de markt...'):
+with st.spinner('Live koersen ophalen...'):
     for t in AL:
         d = gd(t)
         if d:
             c = d['h']['Close']
-            r = ta.rsi(c, 14).iloc[-1]
-            m = c.tail(200).mean()
-            p6 = ((d['p']-c.iloc[-126])/c.iloc[-126])*100 if len(c)>126 else 0
-            p1 = ((d['p']-c.iloc[-252])/c.iloc[-252])*100 if len(c)>252 else 0
-            s = "OK"
-            if d['p'] > m and r < 40: s = "BUY"
-            elif r > 70: s = "HIGH"
-            elif d['p'] < m: s = "WAIT"
-            db[t] = {"p":d['p'],"r":r,"s":s,"inf":d['i'],"6m":p6,"1y":p1}
+            rsi = ta.rsi(c, 14).iloc[-1]
+            ma200 = c.tail(200).mean()
+            p6m = ((d['p']-c.iloc[-126])/c.iloc[-126])*100 if len(c)>126 else 0
+            
+            status = "OK"
+            if d['p'] > ma200 and rsi < 40: status = "BUY"
+            elif rsi > 70: status = "HIGH"
+            elif d['p'] < ma200: status = "WAIT"
+            
+            db[t] = {"p":d['p'], "r":rsi, "s":status, "inf":d['i'], "6m":p6m}
 
-# --- PORTFOLIO LOGICA ---
-for pi in st.session_state.pf:
-    tk = str(pi['T']).strip().upper()
-    if tk in db:
-        cur = db[tk]
-        inv, buy, now = float(pi['I']), float(pi['P']), float(cur['p'])
+# Portfolio resultaten berekenen
+for _, row in df_pf.iterrows():
+    t = row['T']
+    if t in db:
+        d = db[t]
+        inv, buy, now = float(row['I']), float(row['P']), d['p']
         w_a = ((inv / buy) * now) - inv
         w_p = (w_a / inv) * 100
-        pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,1),"6M":round(cur['6m'],1),"S":cur['s']})
+        pr.append({"T":t, "W$":round(w_a,2), "W%":round(w_p,1), "6M":round(d['6m'],1), "S":d['s']})
 
+# Scanner resultaten
 for t in ML:
     if t in db:
         d = db[t]
         dy = d['inf'].get('dividendYield',0) or 0
-        sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"R":round(d['r'],1),"S":d['s']})
+        sr.append({"T":t, "P":round(d['p'],2), "D":round(dy*100,2), "R":round(d['r'],1), "S":d['s']})
 
-# --- UI ---
+# --- UI WEERGAVE ---
 st.title("🏦 Stability Investor Pro")
+st.caption("Data live gesynchroniseerd met Google Sheets")
 
 def clr(v):
     if v in ["BUY","OK"]: return "color:green; font-weight:bold"
@@ -120,19 +102,16 @@ def clr(v):
 L, R = st.columns([1, 1.1])
 
 with L:
-    st.header("📊 Portfolio Status")
+    st.header("📊 Portfolio")
     if pr:
         dfp = pd.DataFrame(pr)
-        tot = round(dfp['W$'].sum(), 2)
-        st.metric("Totaal Resultaat", f"€ {tot:.2f}")
+        st.metric("Totaal Resultaat", f"€ {dfp['W$'].sum():.2f}")
         st.dataframe(dfp.sort_values(by='W%').style.map(clr), hide_index=True, use_container_width=True)
     else:
-        st.info("Geen aandelen in portfolio. Voeg ze toe via de sidebar.")
+        st.info("Voeg aandelen toe in de sidebar om te beginnen.")
 
 with R:
     st.header("🔍 Beste Koopkansen")
     if sr:
         dfs = pd.DataFrame(sr)
         st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
-
-
