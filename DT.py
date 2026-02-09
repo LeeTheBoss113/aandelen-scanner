@@ -15,13 +15,27 @@ def load_data():
     try:
         r = requests.get(API_URL)
         data = r.json()
-        # Maak dataframe en zorg dat kolommen altijd T, I, P zijn
+        if not data or len(data) < 2: 
+            return pd.DataFrame(columns=["T", "I", "P"])
+        
+        # We pakken de data vanaf de tweede rij (data[1:]) 
+        # en dwingen de namen T, I, P af.
         df = pd.DataFrame(data[1:], columns=["T", "I", "P"])
+        
+        # Cruciaal: Verwijder eventuele volledig lege rijen
+        df = df.dropna(subset=['T'])
         return df
-    except:
+    except Exception as e:
+        st.error(f"Leesfout: {e}")
         return pd.DataFrame(columns=["T", "I", "P"])
 
 df_pf = load_data()
+
+# Check of er data is (voor debugging)
+if not df_pf.empty:
+    st.sidebar.success(f"{len(df_pf)} posities geladen")
+else:
+    st.sidebar.warning("Geen posities gevonden in de Sheet")
 
 # --- SIDEBAR (BEHEER) ---
 with st.sidebar:
@@ -122,3 +136,4 @@ with R:
     if sr:
         dfs = pd.DataFrame(sr)
         st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
+
