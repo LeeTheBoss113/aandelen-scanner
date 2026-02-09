@@ -9,7 +9,7 @@ st.set_page_config(layout="wide", page_title="Stability Investor Pro")
 
 # --- CONFIG ---
 # PLAK HIER DE URL VAN JE GOOGLE APPS SCRIPT:
-API_URL = "https://script.google.com/macros/s/AKfycbxlP2U3_PsLajE1cjn3ZC4G4d7S9hNcSya1bwR_Jk3WFBoRdPpmKFJrtv_Rhb5As54N/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbwerCvLw5gKdaXnc2iHpfEy97k98iz81Vy-gnojXBoj77d2DeLEzrcabnA1rnSoomfa_Q/exec"
 
 def load_data():
     try:
@@ -136,4 +136,5 @@ with R:
     if sr:
         dfs = pd.DataFrame(sr)
         st.dataframe(dfs.sort_values(by='R').style.map(clr), hide_index=True, use_container_width=True)
+
 
