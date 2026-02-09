@@ -5,14 +5,12 @@ import pandas_ta as ta
 import os
 from datetime import date
 
-st.set_page_config(layout="wide", page_title="Stability Investor Pro")
+st.set_page_config(layout="wide")
 F = "stability_portfolio.csv"
 
 def ld():
  if not os.path.exists(F): return []
- try: 
-  df = pd.read_csv(F)
-  return df.to_dict('records')
+ try: return pd.read_csv(F).to_dict('records')
  except: return []
 
 def sv(d):
@@ -24,18 +22,17 @@ if 'pf' not in st.session_state:
 with st.sidebar:
  st.header("Beheer")
  with st.form("a", clear_on_submit=True):
-  t = st.text_input("Ticker (bv. ASML.AS)").upper().strip()
-  i = st.number_input("Inleg (€)", min_value=0.0)
-  p = st.number_input("Aankoopkoers", min_value=0.0)
-  d_in = st.date_input("Aankoopdatum", value=date.today())
-  if st.form_submit_button("Toevoegen"):
+  t = st.text_input("Ticker").upper().strip()
+  i = st.number_input("Inleg (€)")
+  p = st.number_input("Koers")
+  d_in = st.date_input("Datum", value=date.today())
+  if st.form_submit_button("OK"):
    if t:
     st.session_state.pf.append({"T":t,"I":i,"P":p,"D":str(d_in)})
     sv(st.session_state.pf)
     st.rerun()
- 
  for n, m in enumerate(st.session_state.pf):
-  if st.sidebar.button(f"Verwijder {m['T']}", key=f"d{n}"):
+  if st.sidebar.button(f"X {m['T']}", key=f"d{n}"):
    st.session_state.pf.pop(n)
    sv(st.session_state.pf)
    st.rerun()
@@ -69,4 +66,31 @@ for pi in st.session_state.pf:
  tk = str(pi['T']).strip().upper()
  if tk in db:
   cur = db[tk]
-  inv, buy
+  # Veilige berekening
+  v_i = float(pi['I'])
+  v_p = float(pi['P'])
+  v_n = float(cur['p'])
+  d_s = pd.to_datetime(pi.get('D', date.today()))
+  dag = (pd.Timestamp.now() - d_s).days
+  val = (v_i / v_p) * v_n
+  w_a = val - v_i
+  w_p = (w_a / v_i) * 100
+  pr.append({"T":tk,"W$":round(w_a,2),"W%":round(w_p,1),"€":round(val,2),"Dagen":dag,"S":cur['s']})
+
+for t in ML:
+ if t in db:
+  d = db[t]
+  dy = d['inf'].get('dividendYield',0) or 0
+  sr.append({"T":t,"P":round(d['p'],2),"D":round(dy*100,2),"R":round(d['r'],1),"S":d['s']})
+
+st.title("🏦 Stability Investor Pro")
+L, R = st.columns([1, 1.1])
+
+def clr(v):
+ if v in ["BUY","OK"]: return "color:green"
+ if v == "WAIT": return "color:red"
+ if v == "HIGH": return "color:orange"
+ return ""
+
+with L:
+ st
