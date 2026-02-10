@@ -6,6 +6,34 @@ import requests
 import json
 from datetime import datetime
 
+# --- 1. ZET DEZE FUNCTIE BOVENIN (vlak onder de imports) ---
+def color_status(v):
+    colors = {
+        'BUY': 'background-color: #008000; color: white;', # Donkergroen
+        'SELL': 'background-color: #FF0000; color: white;', # Rood
+        'WAIT': 'background-color: #FFA500; color: black;', # Oranje
+        'ACCUMULATE': 'background-color: #90EE90; color: black;', # Lichtgroen
+        'BEARISH': 'background-color: #8B0000; color: white;' # Donkerrood
+    }
+    return colors.get(v, '')
+
+# --- 2. VERVANG DE TAB-GEDEELTES DOOR DIT ---
+
+# TAB 1: PORTFOLIO
+with t1:
+    # ... (je bestaande code voor het toevoegen van trades) ...
+    # Zorg dat je bij de weergave dit gebruikt:
+    if not df_pf.empty:
+        # ... (berekeningen) ...
+        st.dataframe(res_df.style.map(color_status, subset=['Status']), hide_index=True, use_container_width=True)
+
+# TAB 2: SCANNER
+with t2:
+    st.subheader("Top 25 Liquide Aandelen (RSI Focus)")
+    # ... (berekening van scan_df) ...
+    # GEBRUIK HIER .map IN PLAATS VAN .applymap
+    st.dataframe(scan_df.style.map(color_status, subset=['Actie']), use_container_width=True, hide_index=True)
+
 # Instellingen
 st.set_page_config(layout="wide", page_title="Daytrade Pro Dashboard")
 API_URL = "https://script.google.com/macros/s/AKfycbxlP2U3_PsLajE1cjn3ZC4G4d7S9hNcSya1bwR_Jk3WFBoRdPpmKFJrtv_Rhb5As54N/exec"
