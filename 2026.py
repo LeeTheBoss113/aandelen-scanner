@@ -7,25 +7,17 @@ import json
 import time
 
 # --- CONFIG ---
-st.set_page_config(layout="wide", page_title="Daytrade Dashboard Pro 2026")
+st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro")
 API_URL = "https://script.google.com/macros/s/AKfycbyhZxfS0WjCo-oT9n1j9fXrGd5Y7gE2ymU2g2SNSBv49P0be9W6ySsKFgc7QjCySnKm/exec"
 
-# --- SIDEBAR: SIMULATOR & RESET ---
+# --- SIDEBAR: RESET ---
 with st.sidebar:
-    st.header("⚙️ Instellingen")
-    sim_mode = st.toggle("🛠️ Simulator Modus", value=False, help="Indien aan, wordt de data als test gemarkeerd.")
-    
-    st.divider()
-    st.subheader("Schoonmaken")
-    if st.button("🚨 RESET ALL DATA", help="Verwijder alle trades uit de Google Sheet"):
-        # We sturen een speciaal commando naar ons script om alles te wissen
+    st.header("⚙️ Simulator Beheer")
+    if st.button("🚨 RESET VOLLEDIGE HISTORIE", help="Wist actieve trades én het logboek"):
         requests.post(API_URL, data=json.dumps({"method": "reset_all"}))
-        st.warning("Sheet wordt geleegd...")
-        time.sleep(2)
+        st.warning("Alles is gewist...")
+        time.sleep(1.5)
         st.rerun()
-
-if sim_mode:
-    st.info("🟡 JE BENT NU IN SIMULATOR MODUS. Geen echt geld risico.")
 
 # --- DATA FUNCTIES ---
 def style_action(val):
@@ -35,18 +27,32 @@ def style_action(val):
     else: color = '#3498db'
     return f'background-color: {color}; color: white; font-weight: bold'
 
-def get_sheet_data():
+def get_all_data():
     try:
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10)
-        data = r.json()
-        if not data or len(data) < 2: return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
-        df = pd.DataFrame(data[1:], columns=["Ticker", "Inleg", "Koers"])
-        df['Ticker'] = df['Ticker'].astype(str).str.strip().str.upper()
-        df['Inleg'] = pd.to_numeric(df['Inleg'], errors='coerce')
-        df['Koers'] = pd.to_numeric(df['Koers'], errors='coerce')
-        return df.dropna(subset=['Ticker'])
+        res = r.json()
+        
+        # Actieve trades verwerken
+        active_raw = res.get('active', [])
+        if len(active_raw) < 2:
+            df_active = pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
+        else:
+            df_active = pd.DataFrame(active_raw[1:], columns=["Ticker", "Inleg", "Koers"])
+            df_active['Ticker'] = df_active['Ticker'].astype(str).str.strip().str.upper()
+            df_active['Inleg'] = pd.to_numeric(df_active['Inleg'], errors='coerce')
+            df_active['Koers'] = pd.to_numeric(df_active['Koers'], errors='coerce')
+
+        # Logboek (Gerealiseerde winst) verwerken
+        log_raw = res.get('log', [])
+        if len(log_raw) < 2:
+            df_log = pd.DataFrame(columns=["Datum", "Ticker", "Inleg", "Winst"])
+        else:
+            df_log = pd.DataFrame(log_raw[1:], columns=["Datum", "Ticker", "Inleg", "Winst"])
+            df_log['Winst'] = pd.to_numeric(df_log['Winst'], errors='coerce')
+            
+        return df_active.dropna(subset=['Ticker']), df_log
     except:
-        return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
+        return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"]), pd.DataFrame(columns=["Datum", "Ticker", "Inleg", "Winst"])
 
 @st.cache_data(ttl=300)
 def fetch_market(tickers):
@@ -62,89 +68,95 @@ def fetch_market(tickers):
             status = "WAIT"
             if rsi < 35: status = "BUY"
             elif rsi > 65: status = "SELL"
-            p6m = h['Close'].iloc[-126] if len(h) > 126 else h['Close'].iloc[0]
-            trend = ((price - p6m) / p6m) * 100
-            results[t] = {"price": price, "rsi": rsi, "status": status, "trend": trend}
+            results[t] = {"price": price, "rsi": rsi, "status": status}
         except: continue
     return results
 
-# --- UI ---
-st.title("⚡ Pro Daytrade Connector 2026")
+# --- DATA OPHALEN ---
+df_active, df_log = get_all_data()
+gerealiseerde_winst = df_log['Winst'].sum() if not df_log.empty else 0.0
 
-tab1, tab2 = st.tabs(["📊 Portfolio / Simulator", "🔍 Market Scanner"])
+# --- UI ---
+st.title("⚡ Daytrade Simulator & Tracker")
+
+# TOTAAL OVERZICHT BOVENAAN
+tickers_in_sheet = [t for t in df_active['Ticker'].unique().tolist() if t and t != 'NONE']
+m_data = fetch_market(tickers_in_sheet)
+
+openstaande_winst = 0.0
+pf_list = []
+
+for _, row in df_active.iterrows():
+    t = row['Ticker']
+    if t in m_data:
+        cur = m_data[t]
+        inv = float(row['Inleg'])
+        buy = float(row['Koers'])
+        netto_waarde = ((inv / buy) * cur['price']) * (0.997 if "." not in t else 1.0)
+        winst = netto_waarde - inv
+        openstaande_winst += winst
+        pf_list.append({
+            "Ticker": t, "Inleg": inv, "Aankoop": buy, "Nu": round(cur['price'], 2), 
+            "Netto Winst": round(winst, 2), "Status": cur['status']
+        })
+
+# Metrics
+c1, c2, c3 = st.columns(3)
+c1.metric("Gerealiseerde Winst (Log)", f"€{gerealiseerde_winst:.2f}")
+c2.metric("Openstaande Winst", f"€{openstaande_winst:.2f}", delta=f"{openstaande_winst:.2f}")
+c3.metric("TOTAAL RESULTAAT", f"€{(gerealiseerde_winst + openstaande_winst):.2f}")
+
+st.divider()
+
+tab1, tab2, tab3 = st.tabs(["📊 Actieve Trades", "🔍 Scanner", "📜 Historie (Log)"])
 
 with tab1:
-    col_input, col_display = st.columns([1, 2.5])
-    
-    with col_input:
-        label = "Nieuwe Test Positie" if sim_mode else "Nieuwe Echte Positie"
-        st.subheader(label)
-        with st.form("add_trade", clear_on_submit=True):
-            t_in = st.text_input("Ticker (bv. NVDA)").upper().strip()
-            i_in = st.number_input("Virtuele Inleg (€)" if sim_mode else "Inleg (€)", value=100.0, step=50.0)
-            k_in = st.number_input("Huidige Koers", value=0.0, format="%.2f")
-            if st.form_submit_button("Opslaan"):
-                if t_in and k_in > 0:
-                    requests.post(API_URL, data=json.dumps({"ticker": t_in, "inleg": i_in, "koers": k_in}))
-                    st.success(f"{t_in} toegevoegd aan de lijst!")
+    col_in, col_out = st.columns([1, 2])
+    with col_in:
+        st.subheader("Nieuwe Trade")
+        with st.form("add_sim", clear_on_submit=True):
+            t_in = st.text_input("Ticker").upper().strip()
+            i_in = st.number_input("Inleg (€)", value=100.0)
+            k_in = st.number_input("Koers", value=0.0)
+            if st.form_submit_button("Open Positie"):
+                requests.post(API_URL, data=json.dumps({"ticker": t_in, "inleg": i_in, "koers": k_in}))
+                st.rerun()
+
+    with col_out:
+        st.subheader("Lopende Posities")
+        if pf_list:
+            df_p = pd.DataFrame(pf_list)
+            st.dataframe(df_p.style.map(style_action, subset=['Status']), hide_index=True)
+            
+            # SLUITEN & LOGGEN
+            to_del = st.selectbox("Welke trade sluiten?", [""] + df_p['Ticker'].tolist())
+            if st.button("Trade Sluiten & Winst Verzilveren"):
+                if to_del:
+                    # Zoek de huidige winst op om te loggen
+                    current_winst = df_p[df_p['Ticker'] == to_del]['Netto Winst'].values[0]
+                    requests.post(API_URL, data=json.dumps({
+                        "method": "delete", 
+                        "ticker": to_del, 
+                        "inleg": df_p[df_p['Ticker'] == to_del]['Inleg'].values[0],
+                        "winst": current_winst
+                    }))
+                    st.success(f"Gelogd: €{current_winst} winst!")
                     time.sleep(1)
                     st.rerun()
-
-    with col_display:
-        st.subheader("Huidige Stand van Zaken")
-        df_sheet = get_sheet_data()
-        
-        if not df_sheet.empty:
-            tickers_in_sheet = [t for t in df_sheet['Ticker'].unique().tolist() if t and t != 'NONE']
-            if tickers_in_sheet:
-                m_data = fetch_market(tickers_in_sheet)
-                pf_list = []
-                total_inleg = 0
-                total_waarde_netto = 0
-                
-                for _, row in df_sheet.iterrows():
-                    t = row['Ticker']
-                    if t in m_data:
-                        cur = m_data[t]
-                        inv = float(row['Inleg'])
-                        buy = float(row['Koers'])
-                        
-                        waarde_bruto = (inv / buy) * cur['price']
-                        kosten_factor = 0.0030 if "." not in t else 0.0
-                        netto_waarde = waarde_bruto * (1 - kosten_factor)
-                        netto_winst = netto_waarde - inv
-                        
-                        total_inleg += inv
-                        total_waarde_netto += netto_waarde
-                        
-                        pf_list.append({
-                            "Ticker": t, "Inleg": inv, "Nu": round(cur['price'], 2), 
-                            "Netto Waarde": round(netto_waarde, 2), "Netto Winst": round(netto_winst, 2), "Status": cur['status']
-                        })
-                
-                if pf_list:
-                    total_pnl = total_waarde_netto - total_inleg
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Totale Inleg", f"€{total_inleg:.2f}")
-                    c2.metric("Netto Waarde", f"€{total_waarde_netto:.2f}")
-                    c3.metric("Netto Resultaat", f"€{total_pnl:.2f}", delta=f"{((total_pnl/total_inleg)*100 if total_inleg > 0 else 0):.2f}%")
-                    
-                    st.divider()
-                    st.dataframe(
-                        pd.DataFrame(pf_list).style.map(style_action, subset=['Status'])
-                        .format({"Inleg": "€{:.2f}", "Netto Waarde": "€{:.2f}", "Netto Winst": "€{:.2f}"}), 
-                        hide_index=True, use_container_width=True
-                    )
-                    
-                    to_del = st.selectbox("Ticker verwijderen?", [""] + [p['Ticker'] for p in pf_list])
-                    if st.button("🗑️ Verwijder") and to_del:
-                        requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del}))
-                        st.rerun()
+        else:
+            st.info("Geen actieve trades.")
 
 with tab2:
-    st.subheader("Market Scanner")
-    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN']
+    st.subheader("Markt Scanner")
+    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','ASML.AS','ADYEN.AS','INGA.AS','PLTR','COIN']
     m_watch = fetch_market(watchlist)
-    scan_rows = [{"Ticker": k, "Prijs": round(v['price'], 2), "RSI": round(v['rsi'], 1), "6M Trend": f"{v['trend']:.1f}%", "Actie": v['status']} for k, v in m_watch.items()]
-    if scan_rows:
-        st.dataframe(pd.DataFrame(scan_rows).sort_values('RSI').style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
+    scan_rows = [{"Ticker": k, "RSI": round(v['rsi'], 1), "Actie": v['status']} for k, v in m_watch.items()]
+    st.dataframe(pd.DataFrame(scan_rows).sort_values('RSI').style.map(style_action, subset=['Actie']), use_container_width=True)
+
+with tab3:
+    st.subheader("Gesloten Trades")
+    if not df_log.empty:
+        st.dataframe(df_log.sort_values("Datum", ascending=False), use_container_width=True)
+        st.metric("Totaal verdiend in deze periode", f"€{gerealiseerde_winst:.2f}")
+    else:
+        st.info("Nog geen gesloten trades in het logboek.")
