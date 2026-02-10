@@ -10,6 +10,24 @@ import time
 st.set_page_config(layout="wide", page_title="Daytrade Dashboard Pro 2026")
 API_URL = "https://script.google.com/macros/s/AKfycbyhZxfS0WjCo-oT9n1j9fXrGd5Y7gE2ymU2g2SNSBv49P0be9W6ySsKFgc7QjCySnKm/exec"
 
+# --- SIDEBAR: SIMULATOR & RESET ---
+with st.sidebar:
+    st.header("⚙️ Instellingen")
+    sim_mode = st.toggle("🛠️ Simulator Modus", value=False, help="Indien aan, wordt de data als test gemarkeerd.")
+    
+    st.divider()
+    st.subheader("Schoonmaken")
+    if st.button("🚨 RESET ALL DATA", help="Verwijder alle trades uit de Google Sheet"):
+        # We sturen een speciaal commando naar ons script om alles te wissen
+        requests.post(API_URL, data=json.dumps({"method": "reset_all"}))
+        st.warning("Sheet wordt geleegd...")
+        time.sleep(2)
+        st.rerun()
+
+if sim_mode:
+    st.info("🟡 JE BENT NU IN SIMULATOR MODUS. Geen echt geld risico.")
+
+# --- DATA FUNCTIES ---
 def style_action(val):
     if val == 'BUY': color = '#2ecc71'
     elif val == 'SELL': color = '#e74c3c'
@@ -52,28 +70,28 @@ def fetch_market(tickers):
 
 # --- UI ---
 st.title("⚡ Pro Daytrade Connector 2026")
-st.caption("Inclusief 0.30% FX-kosten correctie voor US aandelen")
 
-tab1, tab2 = st.tabs(["📊 Portfolio Beheer", "🔍 Market Scanner"])
+tab1, tab2 = st.tabs(["📊 Portfolio / Simulator", "🔍 Market Scanner"])
 
 with tab1:
     col_input, col_display = st.columns([1, 2.5])
     
     with col_input:
-        st.subheader("Nieuwe Positie")
+        label = "Nieuwe Test Positie" if sim_mode else "Nieuwe Echte Positie"
+        st.subheader(label)
         with st.form("add_trade", clear_on_submit=True):
-            t_in = st.text_input("Ticker (bv. NVDA of ASML.AS)").upper().strip()
-            i_in = st.number_input("Inleg (€)", value=100.0, step=50.0)
-            k_in = st.number_input("Aankoopkoers", value=0.0, format="%.2f")
-            if st.form_submit_button("Opslaan naar Google Sheets"):
+            t_in = st.text_input("Ticker (bv. NVDA)").upper().strip()
+            i_in = st.number_input("Virtuele Inleg (€)" if sim_mode else "Inleg (€)", value=100.0, step=50.0)
+            k_in = st.number_input("Huidige Koers", value=0.0, format="%.2f")
+            if st.form_submit_button("Opslaan"):
                 if t_in and k_in > 0:
                     requests.post(API_URL, data=json.dumps({"ticker": t_in, "inleg": i_in, "koers": k_in}))
-                    st.success(f"{t_in} toegevoegd!")
+                    st.success(f"{t_in} toegevoegd aan de lijst!")
                     time.sleep(1)
                     st.rerun()
 
     with col_display:
-        st.subheader("Live Portfolio (Netto Schatting)")
+        st.subheader("Huidige Stand van Zaken")
         df_sheet = get_sheet_data()
         
         if not df_sheet.empty:
@@ -91,10 +109,7 @@ with tab1:
                         inv = float(row['Inleg'])
                         buy = float(row['Koers'])
                         
-                        # Brutowaarde
                         waarde_bruto = (inv / buy) * cur['price']
-                        
-                        # FX Kosten Berekening (0.30% voor US aandelen, geen . in ticker)
                         kosten_factor = 0.0030 if "." not in t else 0.0
                         netto_waarde = waarde_bruto * (1 - kosten_factor)
                         netto_winst = netto_waarde - inv
@@ -103,12 +118,8 @@ with tab1:
                         total_waarde_netto += netto_waarde
                         
                         pf_list.append({
-                            "Ticker": t, 
-                            "Inleg": inv, 
-                            "Nu": round(cur['price'], 2), 
-                            "Netto Waarde": round(netto_waarde, 2),
-                            "Netto Winst": round(netto_winst, 2), 
-                            "Status": cur['status']
+                            "Ticker": t, "Inleg": inv, "Nu": round(cur['price'], 2), 
+                            "Netto Waarde": round(netto_waarde, 2), "Netto Winst": round(netto_winst, 2), "Status": cur['status']
                         })
                 
                 if pf_list:
@@ -125,7 +136,7 @@ with tab1:
                         hide_index=True, use_container_width=True
                     )
                     
-                    to_del = st.selectbox("Verwijderen?", [""] + [p['Ticker'] for p in pf_list])
+                    to_del = st.selectbox("Ticker verwijderen?", [""] + [p['Ticker'] for p in pf_list])
                     if st.button("🗑️ Verwijder") and to_del:
                         requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del}))
                         st.rerun()
