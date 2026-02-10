@@ -10,7 +10,7 @@ import time
 st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro 2026")
 
 # Jouw nieuwe API URL
-API_URL = "https://script.google.com/macros/s/AKfycbzU-jPm0qN-qMcucZ7pPklhWhAPyR7A3izSfW9UTtISrnSyHETK5ngTg8tS1-gEMVQ/exec"
+API_URL = "https://script.google.com/macros/s/AKfycby_mNzpbSGjHsam9x6IXAK_mJBdwbImbTYTa3oErSZ-SNqHQ1e7VU2NVKzh_Ptk5rbN/exec"
 
 # --- SIDEBAR: SIMULATOR & RESET ---
 with st.sidebar:
@@ -206,3 +206,4 @@ with tab3:
                 st.rerun()
     else:
         st.info("Het logboek is nog leeg.")
+
