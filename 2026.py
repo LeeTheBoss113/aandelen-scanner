@@ -167,12 +167,35 @@ with tab2:
     if scan_rows:
         st.dataframe(pd.DataFrame(scan_rows).sort_values('RSI').style.map(style_action, subset=['Actie']), use_container_width=True)
 
-with tab3:
-    st.subheader("Logboek (Gesloten Trades)")
-    if not df_log.empty:
-        # Toon historie met nieuwste bovenaan
-        st.dataframe(df_log.iloc[::-1], use_container_width=True, hide_index=True)
-        st.metric("Cumulatief Resultaat", f"€{gerealiseerde_winst:.2f}")
+with tab2:
+    st.subheader("🔍 Live Market Scanner")
+    # De tickers die je wilt volgen
+    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN']
+    
+    # Haal de data op
+    m_watch = fetch_market(watchlist)
+    
+    if m_watch:
+        scan_rows = []
+        for ticker, data in m_watch.items():
+            scan_rows.append({
+                "Ticker": ticker,
+                "Prijs": round(data['price'], 2),
+                "RSI (14)": round(data['rsi'], 1),
+                "Actie": data['status']
+            })
+        
+        # Maak DataFrame en sorteer op RSI (laagste eerst = meeste koopkansen)
+        df_scan = pd.DataFrame(scan_rows).sort_values('RSI (14)')
+        
+        # Toon de tabel met kleurcodering op de Actie-kolom
+        st.dataframe(
+            df_scan.style.map(style_action, subset=['Actie']), 
+            use_container_width=True, 
+            hide_index=True
+        )
+        
+        st.caption("ℹ️ BUY: RSI < 35 | SELL: RSI > 65. Data wordt elke 5 minuten ververst.")
     else:
+        st.warning("Kon geen marktdata ophalen. Controleer je internetverbinding.")
 
-        st.info("Het logboek is nog leeg. Sluit een trade om de historie te vullen.")
