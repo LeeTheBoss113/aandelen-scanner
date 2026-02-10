@@ -8,7 +8,7 @@ import time
 
 # --- CONFIG ---
 st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro 2026")
-API_URL = "https://script.google.com/macros/s/AKfycbyhZxfS0WjCo-oT9n1j9fXrGd5Y7gE2ymU2g2SNSBv49P0be9W6ySsKFgc7QjCySnKm/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbzU-jPm0qN-qMcucZ7pPklhWhAPyR7A3izSfW9UTtISrnSyHETK5ngTg8tS1-gEMVQ/exec"
 
 # --- SIDEBAR: SIMULATOR & RESET ---
 with st.sidebar:
@@ -174,4 +174,5 @@ with tab3:
         st.dataframe(df_log.iloc[::-1], use_container_width=True, hide_index=True)
         st.metric("Cumulatief Resultaat", f"€{gerealiseerde_winst:.2f}")
     else:
+
         st.info("Het logboek is nog leeg. Sluit een trade om de historie te vullen.")
