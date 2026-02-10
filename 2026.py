@@ -12,46 +12,34 @@ API_URL = "https://script.google.com/macros/s/AKfycbyhZxfS0WjCo-oT9n1j9fXrGd5Y7g
 
 # --- STYLING FUNCTIE ---
 def style_action(val):
-    if val == 'BUY': color = '#2ecc71'  # Groen
-    elif val == 'SELL': color = '#e74c3c'  # Rood
-    elif val == 'WAIT': color = '#f1c40f'  # Geel
-    else: color = '#3498db'  # Blauw
+    if val == 'BUY': color = '#2ecc71'
+    elif val == 'SELL': color = '#e74c3c'
+    elif val == 'WAIT': color = '#f1c40f'
+    else: color = '#3498db'
     return f'background-color: {color}; color: white; font-weight: bold'
 
-# --- DATA LADEN UIT GOOGLE (VERBETERD) ---
+# --- DATA LADEN UIT GOOGLE ---
 def get_sheet_data():
     try:
-        # Cache-buster voorkomt oude data
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10)
         data = r.json()
-        
-        # Als de sheet leeg is of alleen headers heeft
         if not data or len(data) < 2: 
             return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
-        
-        # We negeren de headers uit de sheet en dwingen eigen namen af
-        # Dit voorkomt de KeyError: 'Ticker'
-        df = pd.DataFrame(data[1:]) # Pak alles vanaf rij 2
-        df = df.iloc[:, :3] # Pak alleen de eerste 3 kolommen (A, B, C)
+        df = pd.DataFrame(data[1:])
+        df = df.iloc[:, :3] 
         df.columns = ["Ticker", "Inleg", "Koers"]
-        
-        # Data opschonen
         df['Ticker'] = df['Ticker'].astype(str).str.strip().str.upper()
         df['Inleg'] = pd.to_numeric(df['Inleg'], errors='coerce')
         df['Koers'] = pd.to_numeric(df['Koers'], errors='coerce')
-        
         return df.dropna(subset=['Ticker'])
-    except Exception as e:
-        st.error(f"Fout bij ophalen Google Sheets: {e}")
+    except:
         return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
 
 # --- MARKT DATA OPHALEN ---
 @st.cache_data(ttl=300)
 def fetch_market(tickers):
     results = {}
-    if not tickers:
-        return results
-        
+    if not tickers: return results
     for t in tickers:
         try:
             tk = yf.Ticker(t)
@@ -59,16 +47,11 @@ def fetch_market(tickers):
             if h.empty: continue
             price = h['Close'].iloc[-1]
             rsi = ta.rsi(h['Close'], 14).iloc[-1]
-            
-            # Daytrade Logica
             status = "WAIT"
             if rsi < 35: status = "BUY"
             elif rsi > 65: status = "SELL"
-            
-            # Trend 6 maanden
             p6m = h['Close'].iloc[-126] if len(h) > 126 else h['Close'].iloc[0]
             trend = ((price - p6m) / p6m) * 100
-            
             results[t] = {"price": price, "rsi": rsi, "status": status, "trend": trend}
         except: continue
     return results
@@ -79,7 +62,7 @@ st.title("⚡ Pro Daytrade Connector 2026")
 tab1, tab2 = st.tabs(["📊 Portfolio Beheer", "🔍 Market Scanner"])
 
 with tab1:
-    col_input, col_display = st.columns([1, 2])
+    col_input, col_display = st.columns([1, 2.5])
     
     with col_input:
         st.subheader("Nieuwe Positie")
@@ -89,82 +72,80 @@ with tab1:
             k_in = st.number_input("Aankoopkoers", value=0.0, format="%.2f")
             if st.form_submit_button("Opslaan naar Google Sheets"):
                 if t_in and k_in > 0:
-                    with st.spinner("Verzenden..."):
-                        payload = {"ticker": t_in, "inleg": i_in, "koers": k_in}
-                        requests.post(API_URL, data=json.dumps(payload))
-                        st.success(f"{t_in} succesvol toegevoegd!")
-                        time.sleep(1.5)
-                        st.rerun()
-                else:
-                    st.error("Vul een geldige ticker en koers in.")
+                    payload = {"ticker": t_in, "inleg": i_in, "koers": k_in}
+                    requests.post(API_URL, data=json.dumps(payload))
+                    st.success(f"{t_in} toegevoegd!")
+                    time.sleep(1)
+                    st.rerun()
 
     with col_display:
         st.subheader("Huidige Live Portfolio")
         df_sheet = get_sheet_data()
         
         if not df_sheet.empty:
-            # Haal unieke tickers op voor marktdata
             tickers_in_sheet = [t for t in df_sheet['Ticker'].unique().tolist() if t and t != 'NONE']
             
             if tickers_in_sheet:
-                with st.spinner("Live koersen ophalen..."):
-                    m_data = fetch_market(tickers_in_sheet)
-                    
-                    pf_list = []
-                    for _, row in df_sheet.iterrows():
-                        t = row['Ticker']
-                        if t in m_data:
-                            cur = m_data[t]
-                            try:
-                                inv = float(row['Inleg'])
-                                buy = float(row['Koers'])
-                                winst = ((inv / buy) * cur['price']) - inv
-                                pf_list.append({
-                                    "Ticker": t, 
-                                    "Inleg": f"€{inv:.2f}", 
-                                    "Koers": f"€{buy:.2f}", 
-                                    "Nu": round(cur['price'], 2), 
-                                    "Winst": round(winst, 2), 
-                                    "Actie": cur['status']
-                                })
-                            except: continue
-                    
-                    if pf_list:
-                        df_final = pd.DataFrame(pf_list)
-                        st.dataframe(df_final.style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
+                m_data = fetch_market(tickers_in_sheet)
+                pf_list = []
+                total_inleg = 0
+                total_waarde = 0
+                
+                for _, row in df_sheet.iterrows():
+                    t = row['Ticker']
+                    if t in m_data:
+                        cur = m_data[t]
+                        inv = float(row['Inleg'])
+                        buy = float(row['Koers'])
+                        huidige_waarde = (inv / buy) * cur['price']
+                        winst = huidige_waarde - inv
                         
-                        st.divider()
-                        # Verwijder functionaliteit
-                        to_del = st.selectbox("Selecteer ticker om te verwijderen", [""] + df_final['Ticker'].tolist())
-                        if st.button("🗑️ Verwijder geselecteerde ticker"):
-                            if to_del:
-                                requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del}))
-                                st.warning(f"{to_del} verwijderd uit Google Sheets.")
-                                time.sleep(1.5)
-                                st.rerun()
-                    else:
-                        st.info("Geen marktdata gevonden voor de tickers in je sheet.")
+                        total_inleg += inv
+                        total_waarde += huidige_waarde
+                        
+                        pf_list.append({
+                            "Ticker": t, 
+                            "Inleg": inv, 
+                            "Aankoop": f"€{buy:.2f}", 
+                            "Nu": round(cur['price'], 2), 
+                            "Waarde": round(huidige_waarde, 2),
+                            "Opbrengst": round(winst, 2), 
+                            "Actie": cur['status']
+                        })
+                
+                if pf_list:
+                    # Totaaloverzicht bovenaan
+                    c_m1, c_m2, c_m3 = st.columns(3)
+                    total_pnl = total_waarde - total_inleg
+                    c_m1.metric("Totale Inleg", f"€{total_inleg:.2f}")
+                    c_m2.metric("Huidige Waarde", f"€{total_waarde:.2f}")
+                    c_m3.metric("Totaal Rendement", f"€{total_pnl:.2f}", delta=f"{((total_pnl/total_inleg)*100 if total_inleg > 0 else 0):.2f}%")
+                    
+                    st.divider()
+                    
+                    df_final = pd.DataFrame(pf_list)
+                    # We maken de kolommen mooi op
+                    st.dataframe(
+                        df_final.style.map(style_action, subset=['Actie'])
+                        .format({"Inleg": "€{:.2f}", "Waarde": "€{:.2f}", "Opbrengst": "€{:.2f}"}), 
+                        hide_index=True, use_container_width=True
+                    )
+                    
+                    st.divider()
+                    to_del = st.selectbox("Ticker verwijderen?", [""] + df_final['Ticker'].tolist())
+                    if st.button("🗑️ Verwijder uit Sheet"):
+                        if to_del:
+                            requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del}))
+                            st.rerun()
             else:
-                st.info("Geen tickers gevonden in de sheet.")
+                st.info("Geen marktdata beschikbaar.")
         else:
-            st.info("Je Google Sheet is leeg. Voeg een trade toe aan de linkerkant.")
+            st.info("De Google Sheet is leeg.")
 
 with tab2:
     st.subheader("Top 25 Daytrade Scanner")
-    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','NFLX','GOOGL','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN','BABA','PLTR','DIS','PYPL']
-    
-    with st.spinner("Markt scannen..."):
-        m_watch = fetch_market(watchlist)
-        scan_rows = []
-        for k, v in m_watch.items():
-            scan_rows.append({
-                "Ticker": k, 
-                "Prijs": round(v['price'], 2), 
-                "RSI": round(v['rsi'], 1), 
-                "6M Trend": f"{v['trend']:.1f}%", 
-                "Actie": v['status']
-            })
-        
-        if scan_rows:
-            scan_df = pd.DataFrame(scan_rows).sort_values('RSI')
-            st.dataframe(scan_df.style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
+    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','NFLX','GOOGL','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN','BABA']
+    m_watch = fetch_market(watchlist)
+    scan_rows = [{"Ticker": k, "Prijs": round(v['price'], 2), "RSI": round(v['rsi'], 1), "6M Trend": f"{v['trend']:.1f}%", "Actie": v['status']} for k, v in m_watch.items()]
+    if scan_rows:
+        st.dataframe(pd.DataFrame(scan_rows).sort_values('RSI').style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
