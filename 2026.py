@@ -175,7 +175,34 @@ with tab2:
                      use_container_width=True, hide_index=True)
 
 with tab3:
-    st.subheader("Logboek (Gesloten Trades)")
+    st.subheader("📜 Gerealiseerd overzicht")
     if not df_log.empty:
-        st.dataframe(df_log.iloc[::-1], use_container_width=True, hide_index=True)
-    else: st.info("Logboek is leeg.")
+        # Toon het logboek
+        st.dataframe(df_log.sort_values('Datum', ascending=False), use_container_width=True, hide_index=True)
+        
+        st.divider()
+        st.subheader("🛠️ Historie bewerken")
+        
+        # Maak een lijst van trades om te kunnen verwijderen (Ticker + Winst voor identificatie)
+        log_options = []
+        for i, r in df_log.iterrows():
+            log_options.append(f"{r['Ticker']} (Winst: €{r['Winst']:.2f})")
+        
+        to_delete_log = st.selectbox("Selecteer een trade om te verwijderen uit de historie:", [""] + log_options)
+        
+        if st.button("❌ Verwijder geselecteerde trade uit Log"):
+            if to_delete_log:
+                # Extraheer ticker en winst uit de selectie
+                selected_ticker = to_delete_log.split(" (")[0]
+                selected_winst = to_delete_log.split("€")[-1].replace(")", "")
+                
+                requests.post(API_URL, data=json.dumps({
+                    "method": "delete_log_entry",
+                    "ticker": selected_ticker,
+                    "winst": float(selected_winst)
+                }))
+                st.toast(f"{selected_ticker} verwijderd uit historie")
+                time.sleep(1)
+                st.rerun()
+    else:
+        st.info("Het logboek is nog leeg.")
