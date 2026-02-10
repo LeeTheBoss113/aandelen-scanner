@@ -8,7 +8,7 @@ import time
 
 # --- CONFIG ---
 st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro")
-API_URL = "https://script.google.com/macros/s/AKfycbyhZxfS0WjCo-oT9n1j9fXrGd5Y7gE2ymU2g2SNSBv49P0be9W6ySsKFgc7QjCySnKm/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbzFu59-w2ivZbZUw9Im1MQ4HCieZLe-EHkWoZC-zke9_PAjj_tP6GUceNUAy42NS-Rs/exec"
 
 # --- SIDEBAR: RESET ---
 with st.sidebar:
@@ -159,4 +159,5 @@ with tab3:
         st.dataframe(df_log.sort_values("Datum", ascending=False), use_container_width=True)
         st.metric("Totaal verdiend in deze periode", f"€{gerealiseerde_winst:.2f}")
     else:
+
         st.info("Nog geen gesloten trades in het logboek.")
