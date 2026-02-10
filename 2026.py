@@ -18,45 +18,45 @@ def style_action(val):
     else: color = '#3498db'  # Blauw
     return f'background-color: {color}; color: white; font-weight: bold'
 
-# --- DATA LADEN UIT GOOGLE ---
+# --- AANGEPASTE DATA FUNCTIE ---
 def get_sheet_data():
     try:
-        # De 't=' timestamp voorkomt dat Google oude (gecachete) data stuurt
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10)
         data = r.json()
-        if len(data) < 2: 
+        
+        if not data or len(data) < 2: 
             return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
-        # Gebruik de eerste rij als kolomnamen
-        df = pd.DataFrame(data[1:], columns=data[0])
+        
+        # We pakken alles vanaf de tweede rij
+        df = pd.DataFrame(data[1:])
+        
+        # We dwingen de namen af voor de eerste 3 kolommen, 
+        # wat er ook in de Google Sheet header staat.
+        df = df.iloc[:, :3] 
+        df.columns = ["Ticker", "Inleg", "Koers"]
+        
+        # Opschonen: spaties weghalen en tickers naar hoofdletters
+        df['Ticker'] = df['Ticker'].astype(str).str.strip().str.upper()
         return df
     except Exception as e:
+        st.error(f"Data kon niet worden geladen: {e}")
         return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
 
-# --- MARKT DATA OPHALEN ---
-@st.cache_data(ttl=300)
-def fetch_market(tickers):
-    results = {}
-    for t in tickers:
-        try:
-            tk = yf.Ticker(t)
-            h = tk.history(period="1y")
-            if h.empty: continue
-            price = h['Close'].iloc[-1]
-            rsi = ta.rsi(h['Close'], 14).iloc[-1]
-            
-            # Daytrade Logica
-            status = "WAIT"
-            if rsi < 35: status = "BUY"
-            elif rsi > 65: status = "SELL"
-            
-            # Trend 6 maanden
-            p6m = h['Close'].iloc[-126] if len(h) > 126 else h['Close'].iloc[0]
-            trend = ((price - p6m) / p6m) * 100
-            
-            results[t] = {"price": price, "rsi": rsi, "status": status, "trend": trend}
-        except: continue
-    return results
-
+# --- IN TAB 1 (regel 92 waar de fout zat) ---
+with col_display:
+    st.subheader("Huidige Live Portfolio")
+    df_sheet = get_sheet_data() # Ververs data binnen de tab
+    
+    if not df_sheet.empty:
+        # Nu weten we zeker dat 'Ticker' bestaat omdat we het hierboven hebben afgedwongen
+        tickers_in_sheet = df_sheet['Ticker'].dropna().unique().tolist()
+        
+        # Verwijder lege waarden uit de tickerlijst
+        tickers_in_sheet = [t for t in tickers_in_sheet if t and t != 'NONE' and t != 'NAN']
+        
+        if tickers_in_sheet:
+            m_data = fetch_market(tickers_in_sheet)
+            # ... rest van je code (pf_list berekening) ...
 # --- UI OPBOUW ---
 st.title("⚡ Pro Daytrade Connector")
 
@@ -148,4 +148,5 @@ with tab2:
         
         if scan_rows:
             scan_df = pd.DataFrame(scan_rows).sort_values('RSI')
+
             st.dataframe(scan_df.style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
