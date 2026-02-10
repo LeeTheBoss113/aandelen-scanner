@@ -4,115 +4,148 @@ import yfinance as yf
 import pandas_ta as ta
 import requests
 import json
+import time
 
-# 1. Instellingen & Functies (ALTIJD BOVENAAN)
-st.set_page_config(layout="wide", page_title="Daytrade Pro 2026")
+# --- CONFIG ---
+st.set_page_config(layout="wide", page_title="Daytrade Dashboard Pro")
+API_URL = "https://script.google.com/macros/s/AKfycbyhZxfS0WjCo-oT9n1j9fXrGd5Y7gE2ymU2g2SNSBv49P0be9W6ySsKFgc7QjCySnKm/exec"
 
-API_URL = "https://script.google.com/macros/s/AKfycbxlP2U3_PsLajE1cjn3ZC4G4d7S9hNcSya1bwR_Jk3WFBoRdPpmKFJrtv_Rhb5As54N/exec"
+# --- STYLING FUNCTIE ---
+def style_action(val):
+    if val == 'BUY': color = '#2ecc71'  # Groen
+    elif val == 'SELL': color = '#e74c3c'  # Rood
+    elif val == 'WAIT': color = '#f1c40f'  # Geel
+    else: color = '#3498db'  # Blauw
+    return f'background-color: {color}; color: white; font-weight: bold'
 
-def color_status(v):
-    colors = {
-        'BUY': 'background-color: #008000; color: white;', 
-        'SELL': 'background-color: #FF0000; color: white;', 
-        'WAIT': 'background-color: #FFA500; color: black;', 
-        'ACCUMULATE': 'background-color: #90EE90; color: black;', 
-        'BEARISH': 'background-color: #8B0000; color: white;'
-    }
-    return colors.get(v, '')
-
-def load_gsheets():
+# --- DATA LADEN UIT GOOGLE ---
+def get_sheet_data():
     try:
-        r = requests.get(API_URL, timeout=10)
+        # De 't=' timestamp voorkomt dat Google oude (gecachete) data stuurt
+        r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10)
         data = r.json()
-        if len(data) < 2: return pd.DataFrame(columns=["T", "I", "P"])
-        df = pd.DataFrame(data[1:], columns=["T", "I", "P"])
-        df[['I', 'P']] = df[['I', 'P']].apply(pd.to_numeric, errors='coerce')
-        return df.dropna(subset=['T'])
-    except:
-        return pd.DataFrame(columns=["T", "I", "P"])
+        if len(data) < 2: 
+            return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
+        # Gebruik de eerste rij als kolomnamen
+        df = pd.DataFrame(data[1:], columns=data[0])
+        return df
+    except Exception as e:
+        return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
 
+# --- MARKT DATA OPHALEN ---
 @st.cache_data(ttl=300)
-def get_market_data(tickers):
-    db = {}
+def fetch_market(tickers):
+    results = {}
     for t in tickers:
         try:
             tk = yf.Ticker(t)
-            h = tk.history(period="2y")
+            h = tk.history(period="1y")
             if h.empty: continue
-            cp = h['Close'].iloc[-1]
+            price = h['Close'].iloc[-1]
             rsi = ta.rsi(h['Close'], 14).iloc[-1]
-            ma200 = h['Close'].tail(200).mean()
-            # Trend data
-            p_6m = h['Close'].iloc[-126] if len(h) > 126 else h['Close'].iloc[0]
-            p_1y = h['Close'].iloc[-252] if len(h) > 252 else h['Close'].iloc[0]
             
+            # Daytrade Logica
             status = "WAIT"
             if rsi < 35: status = "BUY"
             elif rsi > 65: status = "SELL"
-            elif cp > ma200 and rsi < 45: status = "ACCUMULATE"
             
-            db[t] = {"p": cp, "rsi": rsi, "s": status, "6m": ((cp-p_6m)/p_6m)*100, "1y": ((cp-p_1y)/p_1y)*100}
+            # Trend 6 maanden
+            p6m = h['Close'].iloc[-126] if len(h) > 126 else h['Close'].iloc[0]
+            trend = ((price - p6m) / p6m) * 100
+            
+            results[t] = {"price": price, "rsi": rsi, "status": status, "trend": trend}
         except: continue
-    return db
+    return results
 
-# 2. Data Initialiseren
-st.title("⚡ Daytrade Stability Pro")
-df_pf = load_gsheets()
+# --- UI OPBOUW ---
+st.title("⚡ Pro Daytrade Connector")
 
-# 3. Tabs aanmaken (CRUCIAAL: Hier worden t1, t2, t3 gedefinieerd)
-t1, t2, t3 = st.tabs(["📊 Portfolio & Beheer", "🔍 Daytrade Scanner", "📈 Trend Monitor"])
+# Data ophalen bij start
+df_sheet = get_sheet_data()
 
-# --- TAB 1: PORTFOLIO ---
-with t1:
-    col_l, col_r = st.columns([1, 2])
-    with col_l:
-        st.subheader("Trade Toevoegen")
-        with st.form("trade_form", clear_on_submit=True):
-            ticker = st.text_input("Ticker (bv. NVDA)").upper().strip()
-            inleg = st.number_input("Inleg (€)", value=500.0)
-            koers = st.number_input("Aankoopkoers", min_value=0.0)
-            if st.form_submit_button("Sla Trade Op"):
-                if ticker and koers > 0:
-                    requests.post(API_URL, data=json.dumps({"ticker":ticker, "inleg":inleg, "koers":koers}))
-                    st.success("Verzonden!")
-                    st.rerun()
+tab1, tab2 = st.tabs(["📊 Portfolio Beheer", "🔍 Market Scanner"])
 
-    with col_r:
-        st.subheader("Huidige Posities")
-        if not df_pf.empty:
-            m_data = get_market_data(df_pf['T'].tolist())
-            rows = []
-            total_profit = 0
-            for _, row in df_pf.iterrows():
-                t = row['T']
+with tab1:
+    col_input, col_display = st.columns([1, 2])
+    
+    with col_input:
+        st.subheader("Nieuwe Positie")
+        with st.form("add_trade", clear_on_submit=True):
+            t_in = st.text_input("Ticker (bv. NVDA)").upper().strip()
+            i_in = st.number_input("Inleg (€)", value=100.0, step=50.0)
+            k_in = st.number_input("Aankoopkoers", value=0.0, format="%.2f")
+            if st.form_submit_button("Opslaan naar Google Sheets"):
+                if t_in and k_in > 0:
+                    with st.spinner("Opslaan..."):
+                        payload = {"ticker": t_in, "inleg": i_in, "koers": k_in}
+                        requests.post(API_URL, data=json.dumps(payload))
+                        st.success(f"{t_in} toegevoegd aan je Sheet!")
+                        time.sleep(1)
+                        st.rerun()
+                else:
+                    st.error("Vul een geldige ticker en koers in.")
+
+    with col_display:
+        st.subheader("Huidige Live Portfolio")
+        if not df_sheet.empty and len(df_sheet) > 0:
+            # Tickers uit de sheet halen voor live koersen
+            tickers_in_sheet = df_sheet['Ticker'].unique().tolist()
+            m_data = fetch_market(tickers_in_sheet)
+            
+            pf_list = []
+            for _, row in df_sheet.iterrows():
+                t = str(row['Ticker']).strip().upper()
                 if t in m_data:
                     cur = m_data[t]
-                    winst = (float(row['I']) / float(row['P']) * cur['p']) - float(row['I'])
-                    total_profit += winst
-                    rows.append({"Ticker": t, "Winst": round(winst, 2), "Nu": round(cur['p'], 2), "Status": cur['s']})
+                    try:
+                        inv = float(row['Inleg'])
+                        buy = float(row['Koers'])
+                        winst = ((inv / buy) * cur['price']) - inv
+                        pf_list.append({
+                            "Ticker": t, 
+                            "Inleg": inv, 
+                            "Koers": buy, 
+                            "Nu": round(cur['price'], 2), 
+                            "Winst": round(winst, 2), 
+                            "Actie": cur['status']
+                        })
+                    except: continue
             
-            st.metric("Totaal Resultaat", f"€ {total_profit:.2f}")
-            if rows:
-                st.dataframe(pd.DataFrame(rows).style.map(color_status, subset=['Status']), hide_index=True)
-            
-            with st.expander("Verwijderen"):
-                for t in df_pf['T'].unique():
-                    if st.button(f"🗑️ {t}", key=f"del_{t}"):
-                        requests.post(API_URL, data=json.dumps({"method":"delete", "ticker":t}))
+            if pf_list:
+                df_final = pd.DataFrame(pf_list)
+                st.dataframe(df_final.style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
+                
+                st.divider()
+                # Verwijder functionaliteit
+                to_del = st.selectbox("Selecteer ticker om te verwijderen", [""] + df_final['Ticker'].tolist())
+                if st.button("🗑️ Verwijder geselecteerde ticker"):
+                    if to_del:
+                        requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del}))
+                        st.warning(f"{to_del} verwijderd.")
+                        time.sleep(1)
                         st.rerun()
+            else:
+                st.info("Wachten op marktdata voor je tickers...")
+        else:
+            st.info("Je Google Sheet is momenteel leeg. Voeg een trade toe aan de linkerkant.")
 
-# --- TAB 2: SCANNER ---
-with t2:
+with tab2:
     st.subheader("Top 25 Daytrade Scanner")
-    top_25 = ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'AMD', 'NFLX', 'GOOGL', 'ASML.AS', 'INGA.AS', 'SHELL.AS', 'ADYEN.AS', 'JPM', 'BABA', 'PLTR', 'COIN', 'NIO', 'SQ', 'PYPL', 'DIS']
-    market_db = get_market_data(top_25)
-    scan_rows = [{"Ticker": t, "Prijs": d['p'], "RSI": round(d['rsi'],1), "Actie": d['s']} for t, d in market_db.items()]
-    if scan_rows:
-        st.dataframe(pd.DataFrame(scan_rows).sort_values(by="RSI").style.map(color_status, subset=['Actie']), use_container_width=True, hide_index=True)
-
-# --- TAB 3: TREND ---
-with t3:
-    st.subheader("Trend Analyse")
-    trend_rows = [{"Ticker": t, "6M %": round(d['6m'],1), "1Y %": round(d['1y'],1)} for t, d in market_db.items()]
-    if trend_rows:
-        st.table(pd.DataFrame(trend_rows).sort_values(by="6M %", ascending=False))
+    # Jouw selectie van top aandelen
+    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','NFLX','GOOGL','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN','BABA']
+    
+    with st.spinner("Markt scannen..."):
+        m_watch = fetch_market(watchlist)
+        scan_rows = []
+        for k, v in m_watch.items():
+            scan_rows.append({
+                "Ticker": k, 
+                "Prijs": round(v['price'], 2), 
+                "RSI": round(v['rsi'], 1), 
+                "6M Trend": f"{v['trend']:.1f}%", 
+                "Actie": v['status']
+            })
+        
+        if scan_rows:
+            scan_df = pd.DataFrame(scan_rows).sort_values('RSI')
+            st.dataframe(scan_df.style.map(style_action, subset=['Actie']), hide_index=True, use_container_width=True)
