@@ -8,7 +8,15 @@ import time
 
 # --- CONFIG ---
 st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro 2026")
-API_URL = "https://script.google.com/macros/s/AKfycbzU-jPm0qN-qMcucZ7pPklhWhAPyR7A3izSfW9UTtISrnSyHETK5ngTg8tS1-gEMVQ/exec"
+
+# VEILIGHEID: De URL wordt nu uit de 'Secrets' van Streamlit gehaald
+try:
+    API_URL = st.secrets["google_api_url"]
+except:
+    st.error("Fout: API_URL niet gevonden in Secrets! Voeg 'google_api_url' toe aan je Streamlit Cloud instellingen.")
+    st.stop()
+
+# ... (De rest van je code blijft exact hetzelfde)
 
 # --- SIDEBAR: GERICHTE RESETS ---
 with st.sidebar:
@@ -160,4 +168,5 @@ with tab3:
                 sel_winst = to_delete_log.split("€")[-1].replace(")", "")
                 requests.post(API_URL, data=json.dumps({"method": "delete_log_entry", "ticker": sel_ticker, "winst": float(sel_winst)}))
                 st.rerun()
+
     else: st.info("Geen historie.")
