@@ -6,42 +6,34 @@ import requests
 import json
 import time
 
-# --- CONFIG ---
+# --- CONFIG & VEILIGHEID ---
 st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro 2026")
 
-# VEILIGHEID: De URL wordt nu uit de 'Secrets' van Streamlit gehaald
+# Haal de URL veilig op uit Streamlit Secrets
 try:
     API_URL = st.secrets["google_api_url"]
 except:
-    st.error("Fout: API_URL niet gevonden in Secrets! Voeg 'google_api_url' toe aan je Streamlit Cloud instellingen.")
+    st.error("⚠️ API_URL niet gevonden in Secrets! Voeg 'google_api_url' toe in de Streamlit Cloud Settings.")
     st.stop()
 
-# ... (De rest van je code blijft exact hetzelfde)
-
-# --- SIDEBAR: GERICHTE RESETS ---
-with st.sidebar:
-    st.header("⚙️ Instellingen")
-    sim_mode = st.toggle("🛠️ Simulator Modus", value=True)
-    st.divider()
-    st.subheader("🧹 Data Opschonen")
-    if st.button("🗑️ Reset Actieve Portfolio"):
-        requests.post(API_URL, data=json.dumps({"method": "reset_active"}))
-        st.rerun()
-    if st.button("📜 Wis Logboek (Historie)"):
-        requests.post(API_URL, data=json.dumps({"method": "reset_log"}))
-        st.rerun()
-
-if sim_mode:
-    st.info("🔵 **SIMULATOR MODUS ACTIEF**")
-
-# --- DATA FUNCTIES ---
+# --- STYLING FUNCTIES ---
 def style_action(val):
-    if val == 'BUY': color = '#2ecc71'
-    elif val == 'SELL': color = '#e74c3c'
-    elif val == 'WAIT': color = '#f1c40f'
+    if '✅ STERKE BUY' in val: color = '#1e8449' # Donkergroen
+    elif 'BUY' in val: color = '#2ecc71'
+    elif 'SELL' in val: color = '#e74c3c'
+    elif '⚠️ VALLEND MES' in val: color = '#9b59b6' # Paars (gevaarlijk)
+    elif 'WAIT' in val: color = '#f1c40f'
     else: color = '#3498db'
     return f'background-color: {color}; color: white; font-weight: bold'
 
+def style_trend(val):
+    try:
+        num = float(val.replace('%', ''))
+        color = '#2ecc71' if num > 0 else '#e74c3c'
+        return f'color: {color}; font-weight: bold'
+    except: return ''
+
+# --- DATA FUNCTIES ---
 def get_all_data():
     try:
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10)
@@ -60,7 +52,6 @@ def get_all_data():
 @st.cache_data(ttl=300)
 def fetch_market(tickers):
     results = {}
-    if not tickers: return results
     for t in tickers:
         try:
             tk = yf.Ticker(t)
@@ -72,18 +63,35 @@ def fetch_market(tickers):
             trend6m = ((price - p6m) / p6m) * 100
             p12m = h['Close'].iloc[0]
             trend12m = ((price - p12m) / p12m) * 100
+            
             status = "WAIT"
             if rsi < 35: status = "BUY"
             elif rsi > 65: status = "SELL"
+            
             results[t] = {"price": price, "rsi": rsi, "status": status, "trend6m": trend6m, "trend12m": trend12m}
         except: continue
     return results
 
-# --- MAIN ---
+# --- DATA LADEN ---
 df_active, df_log = get_all_data()
 gerealiseerde_winst = df_log['Winst'].sum() if not df_log.empty else 0.0
 
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Dashboard")
+    sim_mode = st.toggle("🛠️ Simulator Modus", value=True)
+    st.divider()
+    st.subheader("🧹 Opschonen")
+    if st.button("🗑️ Reset Actieve Portfolio"):
+        requests.post(API_URL, data=json.dumps({"method": "reset_active"}))
+        st.rerun()
+    if st.button("📜 Wis Logboek"):
+        requests.post(API_URL, data=json.dumps({"method": "reset_log"}))
+        st.rerun()
+
+# --- MAIN UI ---
 st.title("⚡ Pro Daytrade Dashboard 2026")
+if sim_mode: st.info("🔵 **SIMULATOR MODUS** - Kosten: 0.3% per transactie")
 
 tickers_in_sheet = [t for t in df_active['Ticker'].unique().tolist() if t and t != 'NONE']
 m_data = fetch_market(tickers_in_sheet)
@@ -95,78 +103,85 @@ for _, row in df_active.iterrows():
     t = row['Ticker']
     if t in m_data:
         cur = m_data[t]
-        inv = float(row['Inleg'])
-        buy = float(row['Koers'])
-        
-        # Berekening Break-even (Aankoop + 0.6% totale kosten)
+        inv, buy = float(row['Inleg']), float(row['Koers'])
         be_price = buy * 1.006
-        
         waarde_bruto = (inv / buy) * cur['price']
         netto_waarde = waarde_bruto * (0.997 if "." not in t else 1.0)
         winst = netto_waarde - inv
         openstaande_winst += winst
         pf_list.append({
-            "Ticker": t, "Inleg": inv, "Aankoop": buy, 
-            "B-E Koers": round(be_price, 2),
-            "Nu": round(cur['price'], 2), 
-            "Netto Winst": round(winst, 2), "Status": cur['status']
+            "Ticker": t, "Inleg": inv, "Aankoop": buy, "B-E": round(be_price, 2),
+            "Nu": round(cur['price'], 2), "Winst": round(winst, 2), "RSI": round(cur['rsi'], 1)
         })
 
-# Metrics
 m1, m2, m3 = st.columns(3)
-m1.metric("Gerealiseerde Winst", f"€{gerealiseerde_winst:.2f}")
-m2.metric("Openstaande Winst", f"€{openstaande_winst:.2f}", delta=f"{openstaande_winst:.2f}")
-m3.metric("TOTAAL RESULTAAT", f"€{(gerealiseerde_winst + openstaande_winst):.2f}")
+m1.metric("Gerealiseerd", f"€{gerealiseerde_winst:.2f}")
+m2.metric("Openstaand", f"€{openstaande_winst:.2f}", delta=f"{openstaande_winst:.2f}")
+m3.metric("Totaal", f"€{(gerealiseerde_winst + openstaande_winst):.2f}")
 
-st.divider()
-
-tab1, tab2, tab3 = st.tabs(["📊 Portfolio Beheer", "🔍 Market Scanner", "📜 Historie (Log)"])
+tab1, tab2, tab3 = st.tabs(["📊 Portfolio", "🔍 Smart Scanner", "📜 Historie"])
 
 with tab1:
-    c_in, c_out = st.columns([1, 2.5]) # Iets breder voor extra kolom
-    with c_in:
-        st.subheader("Nieuwe Positie")
-        with st.form("add_trade", clear_on_submit=True):
+    c1, c2 = st.columns([1, 2.5])
+    with c1:
+        st.subheader("Nieuwe Trade")
+        with st.form("add"):
             t_in = st.text_input("Ticker").upper().strip()
             i_in = st.number_input("Inleg (€)", value=100.0)
-            k_in = st.number_input("Huidige Koers", value=0.0)
-            if st.form_submit_button("Open Positie"):
+            k_in = st.number_input("Koers", value=0.0)
+            if st.form_submit_button("Openen"):
                 if t_in and k_in > 0:
                     requests.post(API_URL, data=json.dumps({"ticker": t_in, "inleg": i_in, "koers": k_in}))
                     st.rerun()
-    with c_out:
-        st.subheader("Actuele Stand")
+    with c2:
+        st.subheader("Open Posities")
         if pf_list:
-            df_p = pd.DataFrame(pf_list)
-            st.dataframe(df_p.style.map(style_action, subset=['Status']), hide_index=True, use_container_width=True)
-            to_del = st.selectbox("Sluit trade:", [""] + df_p['Ticker'].tolist())
-            if st.button("Bevestig Verkoop & Log"):
+            st.dataframe(pd.DataFrame(pf_list), hide_index=True, use_container_width=True)
+            to_del = st.selectbox("Sluiten:", [""] + [p['Ticker'] for p in pf_list])
+            if st.button("Verkoop & Log"):
                 if to_del:
-                    row_data = df_p[df_p['Ticker'] == to_del].iloc[0]
-                    requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del, "inleg": row_data['Inleg'], "winst": row_data['Netto Winst']}))
+                    row_d = [p for p in pf_list if p['Ticker'] == to_del][0]
+                    requests.post(API_URL, data=json.dumps({"method": "delete", "ticker": to_del, "inleg": row_d['Inleg'], "winst": row_d['Winst']}))
                     st.rerun()
-        else: st.info("Geen open posities.")
+        else: st.info("Geen posities.")
 
 with tab2:
-    st.subheader("🔍 Market Scanner")
-    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN']
+    st.subheader("🔍 Smart Market Scanner")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        min_trend = st.slider("Minimale 6M Trend (%)", -50, 50, -100)
+    with col_f2:
+        hide_bad = st.checkbox("Verberg 'VALLEND MES'", value=False)
+
+    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','ASML.AS','ADYEN.AS','INGA.AS','SHELL.AS','PLTR','COIN','GOOGL','NFLX','MARA']
     m_watch = fetch_market(watchlist)
     if m_watch:
-        scan_rows = [{"Ticker": k, "Prijs": round(v['price'], 2), "RSI": round(v['rsi'], 1), "6M Trend": f"{v['trend6m']:.1f}%", "Actie": v['status']} for k, v in m_watch.items()]
-        st.dataframe(pd.DataFrame(scan_rows).sort_values('RSI').style.map(style_action, subset=['Actie']), use_container_width=True, hide_index=True)
+        scan_rows = []
+        for k, v in m_watch.items():
+            status = v['status']
+            if status == "BUY":
+                if v['trend6m'] < -5: status = "⚠️ VALLEND MES"
+                elif v['trend6m'] > 5: status = "✅ STERKE BUY"
+            
+            if v['trend6m'] >= min_trend:
+                if not (hide_bad and "VALLEND MES" in status):
+                    scan_rows.append({
+                        "Ticker": k, "Prijs": round(v['price'], 2), "RSI": round(v['rsi'], 1),
+                        "6M Trend": f"{v['trend6m']:.1f}%", "12M Trend": f"{v['trend12m']:.1f}%", "Advies": status
+                    })
+        
+        df_s = pd.DataFrame(scan_rows).sort_values('RSI')
+        st.dataframe(df_s.style.map(style_action, subset=['Advies']).map(style_trend, subset=['6M Trend', '12M Trend']), use_container_width=True, hide_index=True)
 
 with tab3:
-    st.subheader("Gerealiseerd overzicht")
+    st.subheader("Logboek")
     if not df_log.empty:
         st.dataframe(df_log.sort_values('Datum', ascending=False), use_container_width=True, hide_index=True)
-        # Verwijder functie
-        log_options = [f"{r['Ticker']} (Winst: €{r['Winst']:.2f})" for i, r in df_log.iterrows()]
-        to_delete_log = st.selectbox("Verwijder uit historie:", [""] + log_options)
-        if st.button("❌ Wis uit Log"):
-            if to_delete_log:
-                sel_ticker = to_delete_log.split(" (")[0]
-                sel_winst = to_delete_log.split("€")[-1].replace(")", "")
-                requests.post(API_URL, data=json.dumps({"method": "delete_log_entry", "ticker": sel_ticker, "winst": float(sel_winst)}))
+        log_opts = [f"{r['Ticker']} (€{r['Winst']:.2f})" for _, r in df_log.iterrows()]
+        to_del_log = st.selectbox("Corrigeer historie:", [""] + log_opts)
+        if st.button("Wis uit Log"):
+            if to_del_log:
+                s_t = to_del_log.split(" (")[0]
+                s_w = to_del_log.split("€")[-1].replace(")", "")
+                requests.post(API_URL, data=json.dumps({"method": "delete_log_entry", "ticker": s_t, "winst": float(s_w)}))
                 st.rerun()
-
-    else: st.info("Geen historie.")
