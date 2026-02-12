@@ -6,7 +6,7 @@ import time
 
 # --- DE ENIGE ECHTE URL ---
 # VERVANG DIT DOOR DE URL VAN JE NIEUWE SCRIPT (UIT DE NIEUWE SHEET)
-API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbzbmiiW9CfjmchRe-2Ii0rKUWjB84MTdCC2hYAXkNosD9R4PzYR1Fwh0h8Wv4P7-XE3/exec"
 
 st.set_page_config(layout="wide", page_title="Stabiel Dashboard 2026")
 
@@ -87,4 +87,5 @@ with tab2:
 
 with tab3:
     st.subheader("Laatste verkopen")
+
     st.dataframe(df_l, use_container_width=True, hide_index=True)
