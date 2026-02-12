@@ -33,6 +33,12 @@ def style_trend(val):
         return f'color: {color}; font-weight: bold'
     except: return ''
 
+def style_portfolio(ticker, portfolio_list):
+    # Kleurt de ticker lichtoranje als deze in je portfolio zit
+    if ticker in portfolio_list:
+        return 'background-color: #ffcc80; color: black; font-weight: bold'
+    return ''
+
 # --- DATA FUNCTIES ---
 def get_all_data():
     try:
@@ -91,8 +97,8 @@ with st.sidebar:
 
 # --- MAIN UI ---
 st.title("⚡ Pro Daytrade Dashboard 2026")
-if sim_mode: st.info("🔵 **SIMULATOR MODUS** - Kosten: 0.3% per transactie")
 
+# Lijst van tickers die je NU bezit
 tickers_in_sheet = [t for t in df_active['Ticker'].unique().tolist() if t and t != 'NONE']
 m_data = fetch_market(tickers_in_sheet)
 
@@ -118,6 +124,8 @@ m1, m2, m3 = st.columns(3)
 m1.metric("Gerealiseerd", f"€{gerealiseerde_winst:.2f}")
 m2.metric("Openstaand", f"€{openstaande_winst:.2f}", delta=f"{openstaande_winst:.2f}")
 m3.metric("Totaal", f"€{(gerealiseerde_winst + openstaande_winst):.2f}")
+
+st.divider()
 
 tab1, tab2, tab3 = st.tabs(["📊 Portfolio", "🔍 Smart Scanner", "📜 Historie"])
 
@@ -171,7 +179,16 @@ with tab2:
                     })
         
         df_s = pd.DataFrame(scan_rows).sort_values('RSI')
-        st.dataframe(df_s.style.map(style_action, subset=['Advies']).map(style_trend, subset=['6M Trend', '12M Trend']), use_container_width=True, hide_index=True)
+        
+        # TOEPASSEN VAN STYLING:
+        # We gebruiken apply met een functie die controleert of de ticker in de 'tickers_in_sheet' lijst zit.
+        st.dataframe(
+            df_s.style.map(style_action, subset=['Advies'])
+                .map(style_trend, subset=['6M Trend', '12M Trend'])
+                .apply(lambda x: [style_portfolio(val, tickers_in_sheet) if x.name == 'Ticker' else '' for val in x]),
+            use_container_width=True, 
+            hide_index=True
+        )
 
 with tab3:
     st.subheader("Logboek")
@@ -181,7 +198,7 @@ with tab3:
         to_del_log = st.selectbox("Corrigeer historie:", [""] + log_opts)
         if st.button("Wis uit Log"):
             if to_del_log:
-                s_t = to_del_log.split(" (")[0]
+                s_t = to_del_log.split(" (€")[0]
                 s_w = to_del_log.split("€")[-1].replace(")", "")
                 requests.post(API_URL, data=json.dumps({"method": "delete_log_entry", "ticker": s_t, "winst": float(s_w)}))
                 st.rerun()
