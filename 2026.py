@@ -122,14 +122,25 @@ with tab_log:
     if not df_l.empty:
         strat_filter = st.selectbox("Filter op type", ["Alles", "Growth", "Dividend"])
         log_display = df_l.copy()
+        
         if strat_filter != "Alles":
-            log_display = log_display[log_display['Type'] == strat_filter]
+            # Alleen filteren als de kolom 'Type' bestaat
+            if 'Type' in log_display.columns:
+                log_display = log_display[log_display['Type'] == strat_filter]
         
         cols = ['Ticker', 'Inleg', 'Verkoopwaarde', 'Winst_Euro', 'Rendement_Perc', 'Type', 'Datum']
         existing_cols = [c for c in cols if c in log_display.columns]
-        st.dataframe(log_display[existing_cols].sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
+        
+        # VEILIG SORTEREN: Check of 'Datum' in de kolommen zit
+        if 'Datum' in log_display.columns:
+            log_display = log_display.sort_values(by='Datum', ascending=False)
+        
+        if not log_display.empty:
+            st.dataframe(log_display[existing_cols], use_container_width=True, hide_index=True)
+        else:
+            st.info(f"Geen resultaten gevonden voor {strat_filter}.")
     else:
-        st.info("Logboek is nog leeg.")
+        st.info("Logboek is nog leeg. Verkoop een aandeel om de historie te starten.")
 
 # --- SIDEBAR TOEVOEGEN ---
 with st.sidebar:
@@ -142,4 +153,5 @@ with st.sidebar:
         if st.form_submit_button("Toevoegen"):
             requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}", headers=HEADERS, 
                           json={"fields": {"Ticker": t, "Inleg": i, "Koers": k, "Type": s}})
+
             st.rerun()
