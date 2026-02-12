@@ -3,7 +3,6 @@ import pandas as pd
 import yfinance as yf
 import pandas_ta as ta
 import requests
-import json
 import time
 
 AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
@@ -109,3 +108,4 @@ def render_strategy(strategy_name, rsi_buy_threshold):
 with tab1: render_strategy("Growth", 30)
 
 with tab2: render_strategy("Dividend", 45)
+
