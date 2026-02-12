@@ -87,25 +87,40 @@ def render_portfolio_section(data, strategy_name):
         st.info(f"Geen actieve {strategy_name} posities.")
         return
 
-    subset = data[data['Type'] == strategy_name] if 'Type' in data.columns else pd.DataFrame()
+    # Filter de data op type
+    if 'Type' in data.columns:
+        subset = data[data['Type'] == strategy_name]
+    else:
+        st.warning("Kolom 'Type' niet gevonden in Airtable.")
+        return
     
     if subset.empty:
         st.info(f"Geen actieve {strategy_name} posities.")
         return
 
-    # Metrics berekenen
     total_inleg = 0
     total_waarde = 0
     
     for _, row in subset.iterrows():
-        ticker = str(row['Ticker']).upper()
+        # Zorg dat we altijd een string hebben voor de Ticker
+        ticker = str(row.get('Ticker', '')).strip().upper()
+        if not ticker:
+            continue
+
         try:
+            # Haal data op met een time-out van 5 seconden
             t = yf.Ticker(ticker)
-            cur_price = t.history(period="1d")['Close'].iloc[-1]
-            aantal = row['Inleg'] / row['Koers']
+            hist = t.history(period="1d")
+            
+            if hist.empty:
+                st.error(f"Geen koersdata gevonden voor {ticker}. Controleer of de ticker klopt.")
+                continue
+
+            cur_price = hist['Close'].iloc[-1]
+            aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
             waarde = aantal * cur_price
             winst = waarde - row['Inleg']
-            perc = (winst / row['Inleg'] * 100)
+            perc = (winst / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
             
             total_inleg += row['Inleg']
             total_waarde += waarde
@@ -115,13 +130,17 @@ def render_portfolio_section(data, strategy_name):
                 c1.metric("Inleg", f"€{row['Inleg']:.2f}")
                 c2.metric("Huidige Waarde", f"€{waarde:.2f}")
                 c3.metric("Huidige Koers", f"€{cur_price:.2f}")
+                
+                # De unieke knop
                 if c4.button("⚡ Verkoop", key=f"sell_{strategy_name}_{row['airtable_id']}"):
                     if sell_position(row, cur_price):
-                        st.success("Verkocht!")
-                        time.sleep(0.5)
+                        st.balloons() # Leuk effectje bij winst!
+                        st.success(f"{ticker} succesvol verplaatst naar Logboek.")
+                        time.sleep(1)
                         st.rerun()
-        except:
-            st.error(f"Kon data voor {ticker} niet laden.")
+        except Exception as e:
+            # Dit voorkomt dat de hele app stopt als één aandeel even niet laadt
+            st.warning(f"Ophalen van {ticker} mislukt (kan tijdelijk zijn).")
 
     st.sidebar.markdown(f"### 📊 Totalen {strategy_name}")
     st.sidebar.write(f"Inleg: €{total_inleg:.2f}")
@@ -173,5 +192,6 @@ with st.sidebar:
                           json={"fields": {"Ticker": t, "Inleg": i, "Koers": k, "Type": s}})
 
             st.rerun()
+
 
 
