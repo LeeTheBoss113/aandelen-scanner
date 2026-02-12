@@ -6,52 +6,34 @@ import requests
 import json
 import time
 
-# --- CONFIG & VEILIGHEID ---
-st.set_page_config(layout="wide", page_title="Daytrade Simulator Pro 2026")
+# --- CONFIG ---
+st.set_page_config(layout="wide", page_title="Dual-Strategy Simulator 2026")
 
 try:
     API_URL = st.secrets["google_api_url"]
 except:
-    st.error("⚠️ API_URL niet gevonden in Secrets!")
+    st.error("⚠️ API_URL niet gevonden!")
     st.stop()
 
-# --- STYLING FUNCTIES ---
+# --- HELPERS ---
 def style_action(val):
-    if '✅ STERKE BUY' in val or '💎 SAFE BUY' in val: color = '#1e8449'
+    if '✅' in val or '💎' in val: color = '#1e8449'
     elif 'BUY' in val: color = '#2ecc71'
     elif 'SELL' in val: color = '#e74c3c'
-    elif '⚠️ VALLEND MES' in val or '❌ ZWAK' in val: color = '#9b59b6'
-    elif 'WAIT' in val: color = '#f1c40f'
+    elif '⚠️' in val or '❌' in val: color = '#9b59b6'
     else: color = '#3498db'
     return f'background-color: {color}; color: white; font-weight: bold'
 
 def style_trend(val):
     try:
         num = float(val.replace('%', ''))
-        color = '#2ecc71' if num > 0 else '#e74c3c'
-        return f'color: {color}; font-weight: bold'
+        return f'color: {"#2ecc71" if num > 0 else "#e74c3c"}; font-weight: bold'
     except: return ''
 
-def style_portfolio(ticker, portfolio_list):
-    if ticker in portfolio_list:
-        return 'background-color: #ffcc80; color: black; font-weight: bold'
+def style_portfolio(ticker, p1, p2):
+    if ticker in p1: return 'background-color: #ffcc80; color: black;'
+    if ticker in p2: return 'background-color: #b3e5fc; color: black;'
     return ''
-
-# --- DATA FUNCTIES ---
-def get_all_data():
-    try:
-        r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10)
-        res = r.json()
-        active_raw = res.get('active', [])
-        log_raw = res.get('log', [])
-        df_active = pd.DataFrame(active_raw[1:], columns=["Ticker", "Inleg", "Koers"]) if len(active_raw) > 1 else pd.DataFrame(columns=["Ticker", "Inleg", "Koers"])
-        df_active['Inleg'] = pd.to_numeric(df_active['Inleg'], errors='coerce')
-        df_active['Koers'] = pd.to_numeric(df_active['Koers'], errors='coerce')
-        df_log = pd.DataFrame(log_raw[1:], columns=["Datum", "Ticker", "Inleg", "Winst"]) if len(log_raw) > 1 else pd.DataFrame(columns=["Datum", "Ticker", "Inleg", "Winst"])
-        if not df_log.empty: df_log['Winst'] = pd.to_numeric(df_log['Winst'], errors='coerce')
-        return df_active.dropna(subset=['Ticker']), df_log
-    except:
-        return pd.DataFrame(columns=["Ticker", "Inleg", "Koers"]), pd.DataFrame(columns=["Datum", "Ticker", "Inleg", "Winst"])
 
 @st.cache_data(ttl=300)
 def fetch_market(tickers, include_div=False):
@@ -59,75 +41,97 @@ def fetch_market(tickers, include_div=False):
     for t in tickers:
         try:
             tk = yf.Ticker(t)
-            h = tk.history(period="1y") 
+            h = tk.history(period="1y")
             if h.empty: continue
             price = h['Close'].iloc[-1]
             rsi = ta.rsi(h['Close'], 14).iloc[-1]
-            p6m = h['Close'].iloc[-126] if len(h) >= 126 else h['Close'].iloc[0]
-            trend6m = ((price - p6m) / p6m) * 100
-            p12m = h['Close'].iloc[0]
-            trend12m = ((price - p12m) / p12m) * 100
-            
-            div_yield = 0.0
-            if include_div:
-                div_yield = tk.info.get('dividendYield', 0.0) * 100 if tk.info.get('dividendYield') else 0.0
-            
-            status = "WAIT"
-            if rsi < 35: status = "BUY"
-            elif rsi > 65: status = "SELL"
-            
-            results[t] = {"price": price, "rsi": rsi, "status": status, "trend6m": trend6m, "trend12m": trend12m, "div": div_yield}
+            trend6m = ((price - h['Close'].iloc[-126]) / h['Close'].iloc[-126]) * 100 if len(h) > 126 else 0
+            trend12m = ((price - h['Close'].iloc[0]) / h['Close'].iloc[0]) * 100
+            div = tk.info.get('dividendYield', 0) * 100 if include_div else 0
+            status = "BUY" if rsi < 35 else "SELL" if rsi > 65 else "WAIT"
+            results[t] = {"price": price, "rsi": rsi, "status": status, "trend6m": trend6m, "trend12m": trend12m, "div": div}
         except: continue
     return results
 
-# --- MAIN ---
-df_active, df_log = get_all_data()
-gerealiseerde_winst = df_log['Winst'].sum() if not df_log.empty else 0.0
-tickers_in_sheet = [t for t in df_active['Ticker'].unique().tolist() if t and t != 'NONE']
+def get_data():
+    r = requests.get(f"{API_URL}?t={int(time.time())}").json()
+    def clean(data):
+        df = pd.DataFrame(data[1:], columns=data[0]) if len(data) > 1 else pd.DataFrame(columns=data[0])
+        for col in ['Inleg', 'Koers', 'Winst']:
+            if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df.dropna(subset=['Ticker']) if 'Ticker' in df.columns else df
+    return clean(r['active']), clean(r['log']), clean(r['active_div']), clean(r['log_div'])
 
-st.title("⚡ Pro Daytrade & Dividend Dashboard")
+# --- LOGICA ---
+df_a, df_l, df_a_div, df_l_div = get_data()
+all_active = df_a['Ticker'].tolist() + df_a_div['Ticker'].tolist()
 
-m1, m2, m3 = st.columns(3)
-m1.metric("Gerealiseerd", f"€{gerealiseerde_winst:.2f}")
-# (Berekening openstaande winst zoals voorheen...)
+st.title("🚀 Dual-Strategy: Growth vs. Dividend")
 
-st.divider()
+# Metrics per strategie
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("🔥 Aggressive Growth")
+    winst_l = df_l['Winst'].sum() if not df_l.empty else 0.0
+    st.metric("Gerealiseerd", f"€{winst_l:.2f}")
 
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Portfolio", "🔍 Smart Scanner", "🛡️ Safe Haven (Div)", "📜 Historie"])
+with col2:
+    st.subheader("🛡️ Safe Haven Dividend")
+    winst_l_div = df_l_div['Winst'].sum() if not df_l_div.empty else 0.0
+    st.metric("Gerealiseerd", f"€{winst_l_div:.2f}")
 
-with tab2:
-    st.subheader("🔍 Momentum Scanner (Groeiaandelen)")
-    # Bestaande scanner code...
-    watchlist = ['NVDA','TSLA','AAPL','MSFT','AMZN','META','AMD','ASML.AS','PLTR','COIN']
-    # ... (styling en weergave)
+tab1, tab2, tab3 = st.tabs(["📈 Growth Strategy", "💎 Dividend Strategy", "⚙️ Instellingen"])
 
-with tab3:
-    st.subheader("🛡️ Dividend Safe Haven")
-    st.caption("Focus op passief inkomen en stabiliteit. Alleen kopen bij positieve 12M trend.")
+def render_strategy(df_active, is_div):
+    m_watch = ['NVDA','TSLA','AAPL','MSFT','AMD','PLTR'] if not is_div else ['KO','PEP','O','JNJ','PG','INGA.AS','NN.AS']
+    data = fetch_market(m_watch + df_active['Ticker'].tolist(), include_div=is_div)
     
-    div_watch = ['KO', 'PEP', 'JNJ', 'PG', 'O', 'ABBV', 'MMM', 'INGA.AS', 'NN.AS', 'ASRNL.AS', 'RDSA.AS']
-    m_div = fetch_market(div_watch, include_div=True)
-    
-    if m_div:
-        div_rows = []
-        for k, v in m_div.items():
-            status = v['status']
-            if v['trend12m'] < 0:
-                status = "❌ ZWAK"
-            elif v['status'] == "BUY" and v['trend12m'] > 0:
-                status = "💎 SAFE BUY"
-            
-            div_rows.append({
-                "Ticker": k, "Prijs": round(v['price'], 2), "Div %": f"{v['div']:.1f}%",
-                "RSI": round(v['rsi'], 1), "12M Trend": f"{v['trend12m']:.1f}%", "Advies": status
-            })
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.write("➕ Nieuwe Positie")
+        with st.form(f"add_{is_div}"):
+            t = st.text_input("Ticker").upper()
+            i = st.number_input("Inleg", 100)
+            k = st.number_input("Koers", 0.0)
+            if st.form_submit_button("Openen"):
+                requests.post(API_URL, data=json.dumps({"ticker":t,"inleg":i,"koers":k,"is_div":is_div}))
+                st.rerun()
+    with c2:
+        st.write("📊 Open Posities")
+        pf = []
+        for _, r in df_active.iterrows():
+            if r['Ticker'] in data:
+                d = data[r['Ticker']]
+                netto = ((r['Inleg']/r['Koers'])*d['price']) * (1 if "." in r['Ticker'] else 0.997) - r['Inleg']
+                pf.append({"Ticker":r['Ticker'], "Inleg":r['Inleg'], "Winst":round(netto,2), "RSI":round(d['rsi'],1)})
+        if pf:
+            st.dataframe(pd.DataFrame(pf), use_container_width=True, hide_index=True)
+            sel = st.selectbox("Sluiten:", [""]+[p['Ticker'] for p in pf], key=f"sel_{is_div}")
+            if st.button("Verkoop & Log", key=f"btn_{is_div}"):
+                row = [p for p in pf if p['Ticker']==sel][0]
+                requests.post(API_URL, data=json.dumps({"method":"delete","ticker":sel,"inleg":row['Inleg'],"winst":row['Winst'],"is_div":is_div}))
+                st.rerun()
+
+    st.divider()
+    st.write("🔍 Scanner")
+    scan = []
+    for k, v in fetch_market(m_watch, include_div=is_div).items():
+        status = v['status']
+        if is_div:
+            if v['trend12m'] < 0: status = "❌ ZWAK"
+            elif status == "BUY": status = "💎 SAFE BUY"
+        else:
+            if status == "BUY" and v['trend6m'] < -5: status = "⚠️ VALLEND MES"
         
-        df_d = pd.DataFrame(div_rows).sort_values('Div %', ascending=False)
-        st.dataframe(
-            df_d.style.map(style_action, subset=['Advies'])
-                .map(style_trend, subset=['12M Trend'])
-                .apply(lambda x: [style_portfolio(val, tickers_in_sheet) if x.name == 'Ticker' else '' for val in x]),
-            use_container_width=True, hide_index=True
-        )
+        row = {"Ticker":k, "Prijs":v['price'], "RSI":v['rsi'], "12M %":f"{v['trend12m']:.1f}%", "Advies":status}
+        if is_div: row["Div %"] = f"{v['div']:.1f}%"
+        scan.append(row)
+    
+    df_scan = pd.DataFrame(scan)
+    st.dataframe(df_scan.style.map(style_action, subset=['Advies']).map(style_trend, subset=['12M %']), use_container_width=True, hide_index=True)
 
-# (Rest van de tabs: Portfolio en Historie zoals voorheen...)
+with tab1: render_strategy(df_a, False)
+with tab2: render_strategy(df_a_div, True)
+with tab3:
+    if st.button("🚨 Reset ALLES (Growth)"): requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":False})); st.rerun()
+    if st.button("🚨 Reset ALLES (Dividend)"): requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":True})); st.rerun()
