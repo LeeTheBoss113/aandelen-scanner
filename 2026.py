@@ -141,14 +141,19 @@ st.divider()
 st.subheader("📜 Gerealiseerde Resultaten (Logboek)")
 df_l = get_airtable_data(LOG_TABLE)
 
-if not df_l.empty:
+# Controleer of de tabel niet leeg is EN of de cruciale kolommen bestaan
+required_columns = ['Ticker', 'Inleg', 'Verkoopwaarde', 'Winst_Euro', 'Rendement_Perc', 'Datum']
+
+if not df_l.empty and all(col in df_l.columns for col in required_columns):
     # Tabel netjes tonen
-    df_l_clean = df_l[['Ticker', 'Inleg', 'Verkoopwaarde', 'Winst_Euro', 'Rendement_Perc', 'Datum']].copy()
+    df_l_clean = df_l[required_columns].copy()
     df_l_clean = df_l_clean.sort_values(by='Datum', ascending=False)
     st.dataframe(df_l_clean, use_container_width=True, hide_index=True)
     
     totaal_winst = df_l_clean['Winst_Euro'].sum()
     st.success(f"Totaal verdiend met gesloten trades: **€{totaal_winst:.2f}**")
+else:
+    st.info("Het logboek is nog leeg. Zodra je een aandeel verkoopt, verschijnt hier de historie.")
 
 # --- TOEVOEGEN FORMULIER ---
 with st.sidebar:
@@ -168,4 +173,5 @@ with st.sidebar:
                     time.sleep(1)
                     st.rerun()
                 else:
+
                     st.error("Fout bij opslaan.")
