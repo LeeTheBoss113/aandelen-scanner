@@ -9,102 +9,121 @@ import time
 # --- CONFIG ---
 st.set_page_config(layout="wide", page_title="Scanner 2026")
 
-# De link naar je nieuwe Google Script implementatie
 API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
 
 # --- DATA OPHALEN ---
 def get_data():
     try:
-        # We voegen een timestamp toe om caching te voorkomen
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10).json()
         
         def clean(raw_data, fallback_cols):
             if not raw_data or len(raw_data) <= 1:
                 return pd.DataFrame(columns=fallback_cols)
             
-            # We forceren de kolommen op basis van POSITIE voor maximale stabiliteit
             df = pd.DataFrame(raw_data[1:])
-            
-            # Als de sheet minder kolommen heeft dan verwacht, vul aan met leegte
-            while len(df.columns) < len(fallback_cols):
+            # Zorg dat we altijd 4 kolommen hebben (Ticker, Inleg, Koers, Type)
+            while len(df.columns) < 4:
                 df[len(df.columns)] = ""
                 
-            df = df.iloc[:, :len(fallback_cols)]
+            df = df.iloc[:, :4]
             df.columns = fallback_cols
             
-            # Zet getallen om
-            for col in ['Inleg', 'Koers', 'Winst']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            
-            # Ticker opschonen
+            # Types opschonen: verwijder spaties en zet alles naar hoofdletters voor de vergelijking
+            df['Type'] = df['Type'].astype(str).str.strip().upper()
             df['Ticker'] = df['Ticker'].astype(str).str.strip().upper()
+            
+            for col in ['Inleg', 'Koers']:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
             return df[df['Ticker'] != ""]
 
-        df_a = clean(r.get('active', []), ["Ticker", "Inleg", "Koers", "Type"])
-        df_l = clean(r.get('log', []), ["Datum", "Ticker", "Inleg", "Winst", "Type"])
-        return df_a, df_l
-    except Exception as e:
-        st.error(f"Fout bij verbinden met Google: {e}")
+        return clean(r.get('active', []), ["Ticker", "Inleg", "Koers", "Type"]), \
+               clean(r.get('log', []), ["Datum", "Ticker", "Inleg", "Winst", "Type"])
+    except:
         return pd.DataFrame(columns=["Ticker", "Inleg", "Koers", "Type"]), pd.DataFrame()
 
-# --- INITIALISATIE ---
+# --- DATA LADEN ---
 df_active, df_log = get_data()
 
 st.title("🚀 Dual-Strategy Dashboard")
 
-# DEBUG OPTIE (Zet dit uit als alles werkt)
-if st.sidebar.checkbox("Laat ruwe data zien"):
-    st.write("Data uit Google Sheets:", df_active)
+# FILTERING (Extra robuust)
+growth_active = df_active[df_active['Type'] == "GROWTH"]
+div_active = df_active[df_active['Type'] == "DIVIDEND"]
 
-# Strategieën splitsen
-# We maken het "case-insensitive" voor de zekerheid
-growth_active = df_active[df_active['Type'].astype(str).str.upper() == "GROWTH"]
-div_active = df_active[df_active['Type'].astype(str).str.upper() == "DIVIDEND"]
+tab1, tab2, tab3 = st.tabs(["📈 Growth Strategy", "💎 Dividend Strategy", "📜 Logboek"])
 
-# Als er geen type is ingevuld, laten we die ook zien in een 'Onbekend' tabblad
-misc_active = df_active[~df_active['Type'].astype(str).str.upper().isin(["GROWTH", "DIVIDEND"])]
-
-t1, t2, t3, t4 = st.tabs(["📈 Growth", "💎 Dividend", "❓ Ongeclassificeerd", "📜 Logboek"])
-
-def render_portfolio(df, p_type):
+def render_portfolio(df, p_type_label, p_type_value):
+    st.subheader(f"Actieve {p_type_label} posities")
+    
+    # Haal koersen op voor de tabel
     if not df.empty:
-        st.subheader(f"Actieve {p_type} posities")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        tickers = df['Ticker'].tolist()
+        # Voeg watchlist toe aan data ophalen
+        watchlist = ['NVDA','TSLA','AAPL','MSFT'] if p_type_value == "Growth" else ['KO','PEP','O','JNJ']
+        all_t = list(set(tickers + watchlist))
         
-        sel = st.selectbox("Selecteer aandeel om te sluiten:", [""] + df['Ticker'].tolist(), key=f"sel_{p_type}")
-        if st.button("Sluit positie & Log winst", key=f"btn_{p_type}"):
+        # Simpele koers ophaal actie
+        market_data = {}
+        for t in all_t:
+            try:
+                # Alleen ophalen als we het aandeel echt in bezit hebben voor de winstberekening
+                if t in tickers:
+                    tk = yf.Ticker(t)
+                    price = tk.history(period="1d")['Close'].iloc[-1]
+                    market_data[t] = price
+            except: continue
+
+        # Bereken winst
+        pf_display = []
+        for _, r in df.iterrows():
+            nu_koers = market_data.get(r['Ticker'], 0)
+            winst = ((r['Inleg'] / r['Koers']) * nu_koers) - r['Inleg'] if r['Koers'] > 0 and nu_koers > 0 else 0
+            pf_display.append({
+                "Ticker": r['Ticker'], "Inleg": r['Inleg'], "Aankoop": r['Koers'], 
+                "Nu": round(nu_koers, 2), "Winst": round(winst, 2)
+            })
+        
+        st.dataframe(pd.DataFrame(pf_display), use_container_width=True, hide_index=True)
+        
+        # Verkoop knop
+        sel = st.selectbox("Sluit positie:", [""] + tickers, key=f"sel_{p_type_value}")
+        if st.button("Verkoop & Log", key=f"btn_{p_type_value}"):
             if sel:
-                row = df[df['Ticker'] == sel].iloc[0]
-                # Hier de POST call naar Google Script
+                row = [p for p in pf_display if p['Ticker'] == sel][0]
                 requests.post(API_URL, data=json.dumps({
-                    "method": "delete",
-                    "ticker": sel,
-                    "inleg": row['Inleg'],
-                    "winst": 0, # In de echte versie bereken je dit op basis van koers
-                    "type": p_type
+                    "method": "delete", "ticker": sel, "inleg": row['Inleg'], "winst": row['Winst'], "type": p_type_value
                 }))
                 st.rerun()
     else:
-        st.info(f"Geen {p_type} posities gevonden.")
+        st.info(f"Geen actieve {p_type_label} aandelen in Google Sheets.")
 
-    with st.expander(f"➕ Nieuwe {p_type} toevoegen"):
-        with st.form(f"form_{p_type}"):
-            t = st.text_input("Ticker").upper()
-            i = st.number_input("Inleg", 100)
-            k = st.number_input("Koers", 0.0)
-            if st.form_submit_button("Opslaan naar Google Sheet"):
-                requests.post(API_URL, data=json.dumps({"ticker":t, "inleg":i, "koers":k, "type":p_type}))
-                st.rerun()
+    # Toevoeg formulier
+    with st.expander(f"➕ Voeg {p_type_label} toe"):
+        with st.form(f"add_{p_type_value}"):
+            t_in = st.text_input("Ticker").upper()
+            i_in = st.number_input("Inleg (€)", 100)
+            k_in = st.number_input("Koers", 0.0)
+            if st.form_submit_button("Opslaan"):
+                if t_in and k_in > 0:
+                    requests.post(API_URL, data=json.dumps({
+                        "ticker": t_in, "inleg": i_in, "koers": k_in, "type": p_type_value
+                    }))
+                    st.rerun()
 
-with t1: render_portfolio(growth_active, "Growth")
-with t2: render_portfolio(div_active, "Dividend")
-with t3: 
-    if not misc_active.empty:
-        st.warning("Deze aandelen hebben geen geldig type (Growth/Dividend) in de Sheet.")
-        render_portfolio(misc_active, "Onbekend")
-    else:
-        st.success("Alle aandelen zijn netjes ingedeeld!")
-with t4:
-    st.subheader("Laatste verkopen")
+with tab1:
+    render_portfolio(growth_active, "Growth", "Growth")
+
+with tab2:
+    render_portfolio(div_active, "Dividend", "Dividend")
+
+with tab3:
+    st.subheader("Gesloten Trades")
     st.dataframe(df_log, use_container_width=True, hide_index=True)
+
+# --- DEBUG CHECK (Alleen zichtbaar als Dividend leeg blijft) ---
+if div_active.empty and not df_active.empty:
+    with st.sidebar:
+        st.write("### 🛠 Debug Hulp")
+        st.write("Gevonden types in Sheet:")
+        st.write(df_active['Type'].unique())
