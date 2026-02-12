@@ -10,7 +10,7 @@ import time
 st.set_page_config(layout="wide", page_title="Scanner 2026 - Rollback")
 
 # PLAK HIER JE NIEUWE URL VAN JE NIEUWE GOOGLE SHEET
-API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbzbmiiW9CfjmchRe-2Ii0rKUWjB84MTdCC2hYAXkNosD9R4PzYR1Fwh0h8Wv4P7-XE3/exec"
 
 # --- DATA OPHALEN (STABIELE METHODE) ---
 def get_data():
@@ -70,4 +70,5 @@ with t1: render_section(growth_df, "Growth")
 with t2: render_section(div_df, "Dividend")
 with t3:
     st.subheader("Logboek (Verkopen)")
+
     st.dataframe(df_log, use_container_width=True, hide_index=True)
