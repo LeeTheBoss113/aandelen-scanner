@@ -134,3 +134,4 @@ with t3:
         st.dataframe(df_log.sort_values('Datum', ascending=False), use_container_width=True, hide_index=True)
 
     else: st.info("Nog geen afgesloten trades.")
+
