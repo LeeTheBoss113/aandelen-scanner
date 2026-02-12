@@ -9,7 +9,7 @@ import time
 # --- CONFIG ---
 st.set_page_config(layout="wide", page_title="Scanner 2026")
 
-API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbwicxcmIFQIuG4AVuHu8XBETgWOcMgHQy_nImVbVBWM8ww4omhI0eQpnJNM4sdAHxL6/exec"
 
 # --- DATA OPHALEN ---
 def get_data():
@@ -126,4 +126,5 @@ if div_active.empty and not df_active.empty:
     with st.sidebar:
         st.write("### 🛠 Debug Hulp")
         st.write("Gevonden types in Sheet:")
+
         st.write(df_active['Type'].unique())
