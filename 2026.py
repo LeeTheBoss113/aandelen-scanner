@@ -75,7 +75,7 @@ if not df_p.empty:
         col3.write(f"Winst: €{winst:.2f}")
         
         # De Verkoop Knop
-        if col5.button("Verkopen 💰", key=f"sell_{row['Ticker']}"):
+        if col5.button("Verkopen 💰", key=f"sell_{row['Ticker']}_{row['airtable_id']}"):
             sell_position(row, cur_price)
             st.success(f"{row['Ticker']} verkocht voor €{cur_price:.2f}!")
             time.sleep(1)
@@ -89,4 +89,5 @@ if not df_l.empty:
     st.dataframe(df_l[['Ticker', 'Winst_Euro', 'Rendement_Perc', 'Datum']], use_container_width=True)
 
     st.metric("Totaal Gerealiseerd", f"€{df_l['Winst_Euro'].sum():.2f}")
+
 
