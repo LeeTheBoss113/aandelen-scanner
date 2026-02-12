@@ -40,14 +40,25 @@ def delete_from_airtable(record_id):
 # --- UI ---
 st.title("💎 Airtable Strategy Dashboard")
 
+# --- DATA LADEN EN FILTEREN ---
 df = get_airtable_data()
 
-if not df.empty:
-    # Splitsen op type
+st.title("💎 Airtable Strategy Dashboard")
+
+# Controleer of we data hebben en of de kolom 'Type' bestaat
+if not df.empty and 'Type' in df.columns:
+    # Zorg dat eventuele kleine letters of spaties geen invloed hebben
+    df['Type'] = df['Type'].astype(str).str.strip()
     growth_df = df[df['Type'] == 'Growth']
     div_df = df[df['Type'] == 'Dividend']
 else:
-    growth_df = div_df = pd.DataFrame()
+    # Als de kolom ontbreekt of de tabel leeg is, maak lege dataframes
+    growth_df = pd.DataFrame(columns=["Ticker", "Inleg", "Koers", "Type"])
+    div_df = pd.DataFrame(columns=["Ticker", "Inleg", "Koers", "Type"])
+    if df.empty:
+        st.info("De tabel is nog leeg. Voeg je eerste aandeel toe!")
+    elif 'Type' not in df.columns:
+        st.error("Fout: Kolom 'Type' niet gevonden in Airtable. Controleer de spelling!")
 
 tab1, tab2 = st.tabs(["🚀 Growth", "🛡️ Dividend"])
 
@@ -82,4 +93,5 @@ def render_strategy(df_subset, label):
             st.info("Geen posities gevonden.")
 
 with tab1: render_strategy(growth_df, "Growth")
+
 with tab2: render_strategy(div_df, "Dividend")
