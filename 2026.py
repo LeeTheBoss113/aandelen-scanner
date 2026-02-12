@@ -40,7 +40,7 @@ def sell_position(row, current_price):
         winst_eur = verkoopwaarde - row['Inleg']
         rendement = (winst_eur / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
         
-        # 2. Data voorbereiden (alles expliciet naar juiste type omzetten)
+        # 2. Data voorbereiden
         log_payload = {
             "fields": {
                 "Ticker": str(row['Ticker']).upper(),
@@ -49,7 +49,7 @@ def sell_position(row, current_price):
                 "Winst_Euro": round(float(winst_eur), 2),
                 "Rendement_Perc": round(float(rendement), 2),
                 "Type": str(row.get('Type', 'Growth')),
-                "Datum": datetime.now().isoformat()
+                "Datum": datetime.now().strftime('%Y-%m-%d') # <--- Dit is de fix!
             }
         }
         
@@ -173,4 +173,5 @@ with st.sidebar:
                           json={"fields": {"Ticker": t, "Inleg": i, "Koers": k, "Type": s}})
 
             st.rerun()
+
 
