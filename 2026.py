@@ -10,7 +10,7 @@ import time
 st.set_page_config(layout="wide", page_title="Dual-Strategy Simulator 2026")
 
 # Jouw API URL
-API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
+API_URL = "https://script.google.com/macros/s/AKfycby4g5aay9DphM480bDfATrV5cxkCat9LN-4C_ZiiA446SKFfMWVBmiQaeLtX-Jm1rUB/exec"
 
 # --- STYLING HELPERS ---
 def style_action(val):
@@ -198,4 +198,5 @@ with tab3:
         st.write("Dividend Management")
         if st.button("Reset Dividend Active"):
             requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":True}))
+
             st.rerun()
