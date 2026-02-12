@@ -4,7 +4,7 @@ import requests
 import json
 import time
 
-API_URL = "https://script.google.com/macros/s/AKfycbzEhORE8hitkKdnhY4hQw0OtGQwHKLf-XoBAmg5lmueVPWewQxITohv9ihFLEPSdVzZ/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbzbmiiW9CfjmchRe-2Ii0rKUWjB84MTdCC2hYAXkNosD9R4PzYR1Fwh0h8Wv4P7-XE3/exec"
 
 def get_data():
     try:
@@ -36,4 +36,5 @@ def render(df, p_type):
             st.rerun()
 
 with tab1: render(growth, "Growth")
+
 with tab2: render(dividend, "Dividend")
