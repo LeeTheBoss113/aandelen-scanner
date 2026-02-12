@@ -6,7 +6,7 @@ import time
 
 # --- AIRTABLE CONFIG ---
 # Zorg dat deze tokens exact kloppen!
-AIRTABLE_TOKEN = "JOUW_PAT_TOKEN_HIER"
+AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
 BASE_ID = "JOUW_BASE_ID_HIER"
 TABLE_NAME = "Portfolio"
 
@@ -132,4 +132,5 @@ with st.sidebar:
         st.warning("Database is leeg of kolomnamen kloppen niet.")
     
     if st.button("Forceer Refresh"):
+
         st.rerun()
