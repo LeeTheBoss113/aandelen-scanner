@@ -16,11 +16,12 @@ HEADERS = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "applica
 
 st.set_page_config(layout="wide", page_title="Trader Dashboard 2026", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS VOOR COMPACTE LAYOUT ---
+# --- CUSTOM CSS VOOR EXTRA COMPACTE LOOK ---
 st.markdown("""
     <style>
-    [data-testid="stExpander"] { border: 1px solid #f0f2f6; border-radius: 10px; margin-bottom: -10px; }
+    [data-testid="stExpander"] { border: 1px solid #f0f2f6; border-radius: 8px; margin-bottom: -15px; }
     .stMetric { padding: 0px !important; }
+    div[data-testid="stVerticalBlock"] > div { spacing: 0rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -61,7 +62,7 @@ def sell_position(row, current_price):
         return True
     return False
 
-# --- SCANNER & METRICS LOGICA ---
+@st.cache_data(ttl=300) # Cache koersdata voor 5 minuten voor snelheid
 def get_scan_metrics(ticker):
     try:
         t = yf.Ticker(ticker)
@@ -69,19 +70,25 @@ def get_scan_metrics(ticker):
         if len(hist) < 20: return None
         cur = hist['Close'].iloc[-1]
         m6 = hist['Close'].iloc[-126] if len(hist) > 126 else hist['Close'].iloc[0]
+        m12 = hist['Close'].iloc[0]
         rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
-        return {"Ticker": ticker, "Prijs": cur, "RSI": rsi, "6M": ((cur-m6)/m6)*100}
+        return {
+            "Ticker": ticker, 
+            "Prijs": round(cur, 2), 
+            "RSI": round(rsi, 1), 
+            "6M %": round(((cur-m6)/m6)*100, 1),
+            "12M %": round(((cur-m12)/m12)*100, 1)
+        }
     except: return None
 
 # --- UI COMPONENTEN ---
 def render_portfolio_compact(df, strategy_name):
     subset = df[df['Type'] == strategy_name] if not df.empty and 'Type' in df.columns else pd.DataFrame()
     total_winst = 0
-    
     if subset.empty:
         st.info(f"Geen {strategy_name} posities.")
         return 0
-
+    
     for _, row in subset.iterrows():
         ticker = str(row['Ticker']).upper()
         try:
@@ -90,100 +97,102 @@ def render_portfolio_compact(df, strategy_name):
             aantal = row['Inleg'] / row['Koers']
             winst = (aantal * cur) - row['Inleg']
             total_winst += winst
-            
             with st.expander(f"**{ticker}** | Winst: **€{winst:.2f}**"):
-                c1, c2, c3, c4 = st.columns([1,1,1,1])
-                c1.metric("Inleg", f"€{row['Inleg']:.0f}")
-                c2.metric("Koers", f"€{cur:.2f}")
-                c3.metric("Resultaat", f"{((winst/row['Inleg'])*100):.1f}%")
-                if c4.button("🗑️", key=f"s_{row['airtable_id']}"):
+                c1, c2, c3, c4 = st.columns([1,1,1,0.5])
+                c1.write(f"Inleg: €{row['Inleg']:.0f}")
+                c2.write(f"Koers: €{cur:.2f}")
+                c3.write(f"Res: {((winst/row['Inleg'])*100):.1f}%")
+                if c4.button("🗑️", key=f"del_{row['airtable_id']}"):
                     if sell_position(row, cur): st.rerun()
         except: pass
     return total_winst
 
-# --- MAIN ---
+# --- MAIN DASHBOARD ---
 df_p = get_airtable_data(PORTFOLIO_TABLE)
 df_l = get_airtable_data(LOG_TABLE)
 
-# SIDEBAR BEREKENINGEN & ALERTS
+# WATCHLISTS (15 per categorie)
+GROWTH_WATCH = ['NVDA', 'TSLA', 'PLTR', 'AMD', 'ASML.AS', 'ADYEN.AS', 'COIN', 'MSTR', 'META', 'AMZN', 'GOOGL', 'NFLX', 'SHOP', 'SNOW', 'ARM']
+DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'MO', 'T', 'CVX', 'XOM', 'SCHD', 'VICI']
+
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("📊 Overzicht")
+    st.title("📊 Portfolio")
     
-    # Winsten berekenen voor sidebar
-    winst_growth = render_portfolio_compact(df_p, "Growth") if False else 0 # Dummy call om winst te tellen
-    # (Bovenstaande is niet efficient, we doen het even opnieuw voor de sidebar)
-    
-    def calc_sidebar_winst(df, strat):
-        if df.empty or 'Type' not in df.columns: return 0
-        s = df[df['Type'] == strat]
-        tw = 0
-        for _, r in s.iterrows():
+    # Bereken winsten voor sidebar (zonder zware API calls indien mogelijk)
+    st.subheader("Winst Overzicht")
+    # Voor de sidebar gebruiken we even een snelle loop over de huidige posities
+    gw, dw = 0, 0
+    if not df_p.empty:
+        for _, r in df_p.iterrows():
             try:
-                # We gebruiken even een snelle cache of we slaan het op in session_state voor snelheid
-                tw += ((r['Inleg']/r['Koers']) * yf.Ticker(r['Ticker']).history(period="1d")['Close'].iloc[-1]) - r['Inleg']
+                p = yf.Ticker(r['Ticker']).history(period="1d")['Close'].iloc[-1]
+                w = ((r['Inleg']/r['Koers']) * p) - r['Inleg']
+                if r['Type'] == "Growth": gw += w
+                else: dw += w
             except: pass
-        return tw
-
-    st.subheader("Portefeuille Winst")
-    col_a, col_b = st.columns(2)
-    # Let op: Dit kan traag zijn bij veel tickers, optimalisatie volgt in gebruik
-    gw = calc_sidebar_winst(df_p, "Growth")
-    dw = calc_sidebar_winst(df_p, "Dividend")
-    col_a.metric("🚀 Growth", f"€{gw:.2f}")
-    col_b.metric("💎 Dividend", f"€{dw:.2f}")
+            
+    c_g, c_d = st.columns(2)
+    c_g.metric("🚀 Growth", f"€{gw:.2f}")
+    c_d.metric("💎 Div.", f"€{dw:.2f}")
     
     st.divider()
-    st.subheader("🔔 RSI Alerts (<30)")
-    watchlist = ['NVDA', 'TSLA', 'ASML.AS', 'KO', 'PEP']
-    for t_name in watchlist:
-        m = get_scan_metrics(t_name)
+    st.subheader("🔔 RSI Alerts (<35)")
+    # Check alleen de top 5 van elke lijst voor de sidebar alerts om snelheid te houden
+    for t in (GROWTH_WATCH[:5] + DIVIDEND_WATCH[:5]):
+        m = get_scan_metrics(t)
         if m and m['RSI'] < 35:
-            st.error(f"ALERT: {t_name} is Oversold! (RSI: {m['RSI']:.1f})")
+            st.error(f"{t}: RSI {m['RSI']} 🔥")
 
     st.divider()
-    with st.form("add_pos", clear_on_submit=True):
-        st.subheader("➕ Nieuwe Order")
-        t = st.text_input("Ticker")
-        i = st.number_input("Inleg", 10)
-        k = st.number_input("Koers", 0.01)
-        s = st.selectbox("Type", ["Growth", "Dividend"])
+    with st.form("add"):
+        t_in = st.text_input("Ticker").upper()
+        i_in = st.number_input("Inleg", 10)
+        k_in = st.number_input("Koers", 0.01)
+        s_in = st.selectbox("Type", ["Growth", "Dividend"])
         if st.form_submit_button("Toevoegen"):
             requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}", headers=HEADERS, 
-                          json={"fields": {"Ticker": t.upper(), "Inleg": i, "Koers": k, "Type": s}})
+                          json={"fields": {"Ticker": t_in, "Inleg": i_in, "Koers": k_in, "Type": s_in}})
             st.rerun()
 
-# TABS
-tab1, tab2, tab3 = st.tabs(["🚀 Growth", "💎 Dividend", "📜 Logboek"])
+# --- TABS ---
+tab1, tab2, tab3 = st.tabs(["🚀 Growth Strategy", "💎 Dividend Wealth", "📜 Logboek"])
+
+def process_scanner(watchlist, mode):
+    results = []
+    for t in watchlist:
+        m = get_scan_metrics(t)
+        if m:
+            if mode == "Growth":
+                m['Suggestie'] = "🔥 BUY" if m['RSI'] < 35 else "💰 SELL" if m['RSI'] > 70 else "🚀 MOMENTUM" if m['6M %'] > 20 else "⌛ WAIT"
+            else:
+                m['Suggestie'] = "💎 ACCUMULATE" if m['RSI'] < 45 else "🛡️ HOLD" if m['RSI'] > 65 else "✅ STABLE"
+            results.append(m)
+    return pd.DataFrame(results)
 
 with tab1:
-    render_portfolio_compact(df_p, "Growth")
-    st.divider()
-    # Scanner
-    results = []
-    for t in ['NVDA', 'TSLA', 'PLTR', 'AMD', 'ASML.AS']:
-        m = get_scan_metrics(t)
-        if m:
-            m['Suggestie'] = "🔥 BUY" if m['RSI'] < 35 else "💰 SELL" if m['RSI'] > 70 else "⌛ WAIT"
-            results.append(m)
-    st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+    col_p, col_s = st.columns([1, 2])
+    with col_p:
+        st.subheader("Mijn Posities")
+        render_portfolio_compact(df_p, "Growth")
+    with col_s:
+        st.subheader("Market Scanner (Top 15)")
+        df_growth = process_scanner(GROWTH_WATCH, "Growth")
+        st.dataframe(df_growth, use_container_width=True, hide_index=True)
 
 with tab2:
-    render_portfolio_compact(df_p, "Dividend")
-    st.divider()
-    div_results = []
-    for t in ['KO', 'PEP', 'PG', 'O', 'ABBV']:
-        m = get_scan_metrics(t)
-        if m:
-            m['Suggestie'] = "💎 ACCUMULATE" if m['RSI'] < 45 else "✅ STABLE"
-            div_results.append(m)
-    st.dataframe(pd.DataFrame(div_results), use_container_width=True, hide_index=True)
+    col_p2, col_s2 = st.columns([1, 2])
+    with col_p2:
+        st.subheader("Mijn Posities")
+        render_portfolio_compact(df_p, "Dividend")
+    with col_s2:
+        st.subheader("Dividend Aristocrats Scanner")
+        df_div = process_scanner(DIVIDEND_WATCH, "Dividend")
+        st.dataframe(df_div, use_container_width=True, hide_index=True)
 
 with tab3:
-    st.subheader("Historie")
     if not df_l.empty:
-        st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True)
-        if st.checkbox("Wis Logboek"):
-            if st.button("Bevestig Wissen"):
-                for rid in df_l['airtable_id']:
-                    requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
-                st.rerun()
+        st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
+        if st.button("Wis Logboek"):
+            for rid in df_l['airtable_id']: requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
+            st.rerun()
