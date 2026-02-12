@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import pandas_ta as ta  # Voor RSI berekeningen
 import requests
 import time
 from datetime import datetime
@@ -13,7 +14,7 @@ LOG_TABLE = "Logboek"
 
 HEADERS = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
 
-st.set_page_config(layout="wide", page_title="Trader Dashboard 2026", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Professional Trader Dashboard 2026")
 
 # --- DATA FUNCTIES ---
 def get_airtable_data(table_name):
@@ -33,165 +34,162 @@ def get_airtable_data(table_name):
         return pd.DataFrame()
 
 def sell_position(row, current_price):
-    try:
-        # 1. Berekeningen
-        aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
-        verkoopwaarde = aantal * current_price
-        winst_eur = verkoopwaarde - row['Inleg']
-        rendement = (winst_eur / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
-        
-        # 2. Data voorbereiden
-        log_payload = {
-            "fields": {
-                "Ticker": str(row['Ticker']).upper(),
-                "Inleg": float(row['Inleg']),
-                "Verkoopwaarde": round(float(verkoopwaarde), 2),
-                "Winst_Euro": round(float(winst_eur), 2),
-                "Rendement_Perc": round(float(rendement), 2),
-                "Type": str(row.get('Type', 'Growth')),
-                "Datum": datetime.now().strftime('%Y-%m-%d') # <--- Dit is de fix!
-            }
-        }
-        
-        # 3. Schrijven naar Logboek
-        log_url = f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}"
-        res = requests.post(log_url, headers=HEADERS, json=log_payload)
-        
-        if res.status_code == 200:
-            # 4. Alleen bij succes verwijderen uit Portfolio
-            del_url = f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}/{row['airtable_id']}"
-            del_res = requests.delete(del_url, headers=HEADERS)
-            if del_res.status_code == 200:
-                return True
-            else:
-                st.error(f"Logboek gelukt, maar kon niet verwijderen uit Portfolio: {del_res.text}")
-        else:
-            # DIT LAAT ZIEN WAT ER MIS IS MET JE KOLOMMEN
-            st.error(f"Airtable Logboek fout: {res.status_code} - {res.text}")
-            return False
-            
-    except Exception as e:
-        st.error(f"Fout in verkoop-logica: {e}")
-        return False
-# --- UI START ---
-st.title("🏹 Trading Center 2026")
-
-df_p = get_airtable_data(PORTFOLIO_TABLE)
-df_l = get_airtable_data(LOG_TABLE)
-
-# TABS VOOR DE TWEE STRATEGIEËN
-tab_growth, tab_div, tab_log = st.tabs(["🚀 Daytrade / Growth", "💎 Dividend Portfolio", "📜 Historisch Logboek"])
-
-def render_portfolio_section(data, strategy_name):
-    if data.empty:
-        st.info(f"Geen actieve {strategy_name} posities.")
-        return
-
-    # Filter de data op type
-    if 'Type' in data.columns:
-        subset = data[data['Type'] == strategy_name]
-    else:
-        st.warning("Kolom 'Type' niet gevonden in Airtable.")
-        return
+    aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
+    verkoopwaarde = aantal * current_price
+    winst_eur = verkoopwaarde - row['Inleg']
+    rendement = (winst_eur / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
     
+    log_payload = {
+        "fields": {
+            "Ticker": str(row['Ticker']).upper(),
+            "Inleg": float(row['Inleg']),
+            "Verkoopwaarde": round(float(verkoopwaarde), 2),
+            "Winst_Euro": round(float(winst_eur), 2),
+            "Rendement_Perc": round(float(rendement), 2),
+            "Type": row.get('Type', 'Growth'),
+            "Datum": datetime.now().strftime('%Y-%m-%d')
+        }
+    }
+    res = requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}", headers=HEADERS, json=log_payload)
+    if res.status_code == 200:
+        requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}/{row['airtable_id']}", headers=HEADERS)
+        return True
+    return False
+
+# --- SCANNER LOGICA ---
+def get_scan_metrics(ticker):
+    try:
+        t = yf.Ticker(ticker)
+        # Haal 1 jaar aan data op voor RSI en Year-performance
+        hist = t.history(period="1y")
+        if len(hist) < 20: return None
+        
+        cur_price = hist['Close'].iloc[-1]
+        
+        # Performance berekeningen
+        m6_price = hist['Close'].iloc[-126] if len(hist) > 126 else hist['Close'].iloc[0]
+        m12_price = hist['Close'].iloc[0]
+        
+        perf_6m = ((cur_price - m6_price) / m6_price) * 100
+        perf_12m = ((cur_price - m12_price) / m12_price) * 100
+        
+        # RSI Berekening via pandas_ta
+        rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
+        
+        return {
+            "Ticker": ticker,
+            "Prijs": round(cur_price, 2),
+            "RSI": round(rsi, 1),
+            "6M %": round(perf_6m, 1),
+            "12M %": round(perf_12m, 1)
+        }
+    except:
+        return None
+
+def render_scanner_table(watchlist, strategy_mode):
+    st.subheader(f"🔍 {strategy_mode} Scanner & Suggesties")
+    results = []
+    for ticker in watchlist:
+        data = get_scan_metrics(ticker)
+        if data:
+            # Slimme suggestie logica
+            rsi = data['RSI']
+            p6 = data['6M %']
+            
+            if strategy_mode == "Growth":
+                if rsi < 35: sug = "🔥 BUY THE DIP"
+                elif rsi > 75: sug = "💰 TAKE PROFIT"
+                elif p6 > 20: sug = "🚀 MOMENTUM"
+                else: sug = "⌛ WAIT"
+            else: # Dividend
+                if rsi < 45: sug = "💎 ACCUMULATE"
+                elif rsi > 65: sug = "🛡️ HOLD"
+                else: sug = "✅ STABLE"
+            
+            data['Suggestie'] = sug
+            results.append(data)
+    
+    if results:
+        df_scan = pd.DataFrame(results)
+        
+        def highlight_sug(val):
+            color = '#2ecc71' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'PROFIT' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
+            return f'background-color: {color}; color: white'
+
+        st.dataframe(df_scan.style.applymap(highlight_sug, subset=['Suggestie']), use_container_width=True, hide_index=True)
+
+# --- PORTFOLIO WEERGAVE ---
+def render_portfolio_section(data, strategy_name):
+    subset = data[data['Type'] == strategy_name] if 'Type' in data.columns else pd.DataFrame()
     if subset.empty:
         st.info(f"Geen actieve {strategy_name} posities.")
         return
 
-    total_inleg = 0
-    total_waarde = 0
-    
     for _, row in subset.iterrows():
-        # Zorg dat we altijd een string hebben voor de Ticker
-        ticker = str(row.get('Ticker', '')).strip().upper()
-        if not ticker:
-            continue
-
+        ticker = str(row['Ticker']).upper()
         try:
-            # Haal data op met een time-out van 5 seconden
             t = yf.Ticker(ticker)
-            hist = t.history(period="1d")
-            
-            if hist.empty:
-                st.error(f"Geen koersdata gevonden voor {ticker}. Controleer of de ticker klopt.")
-                continue
-
-            cur_price = hist['Close'].iloc[-1]
-            aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
+            cur_price = t.history(period="1d")['Close'].iloc[-1]
+            aantal = row['Inleg'] / row['Koers']
             waarde = aantal * cur_price
             winst = waarde - row['Inleg']
-            perc = (winst / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
             
-            total_inleg += row['Inleg']
-            total_waarde += waarde
-
-            with st.expander(f"{ticker} | Winst: €{winst:.2f} ({perc:.2f}%)", expanded=True):
+            with st.expander(f"{ticker} | Winst: €{winst:.2f}", expanded=True):
                 c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
                 c1.metric("Inleg", f"€{row['Inleg']:.2f}")
                 c2.metric("Huidige Waarde", f"€{waarde:.2f}")
-                c3.metric("Huidige Koers", f"€{cur_price:.2f}")
-                
-                # De unieke knop
-                if c4.button("⚡ Verkoop", key=f"sell_{strategy_name}_{row['airtable_id']}"):
+                c3.metric("Koers", f"€{cur_price:.2f}")
+                if c4.button("⚡ Verkoop", key=f"s_{strategy_name}_{row['airtable_id']}"):
                     if sell_position(row, cur_price):
-                        st.balloons() # Leuk effectje bij winst!
-                        st.success(f"{ticker} succesvol verplaatst naar Logboek.")
-                        time.sleep(1)
+                        st.success("Verkocht!")
+                        time.sleep(0.5)
                         st.rerun()
-        except Exception as e:
-            # Dit voorkomt dat de hele app stopt als één aandeel even niet laadt
-            st.warning(f"Ophalen van {ticker} mislukt (kan tijdelijk zijn).")
+        except:
+            st.warning(f"Kon {ticker} niet laden.")
 
-    st.sidebar.markdown(f"### 📊 Totalen {strategy_name}")
-    st.sidebar.write(f"Inleg: €{total_inleg:.2f}")
-    st.sidebar.write(f"Winst: €{total_waarde - total_inleg:.2f}")
+# --- MAIN APP ---
+st.title("💼 My Trading Station 2026")
 
-with tab_growth:
-    st.header("Snelgroeiende & Daytrade Posities")
+df_p = get_airtable_data(PORTFOLIO_TABLE)
+df_l = get_airtable_data(LOG_TABLE)
+
+tab1, tab2, tab3 = st.tabs(["🚀 Daytrade / Growth", "💎 Dividend Aristocrats", "📜 Logboek"])
+
+with tab1:
     render_portfolio_section(df_p, "Growth")
+    st.divider()
+    # Scanner voor Growth
+    growth_watch = ['NVDA', 'TSLA', 'PLTR', 'AMD', 'COIN', 'MSTR', 'ASML.AS']
+    render_scanner_table(growth_watch, "Growth")
 
-with tab_div:
-    st.header("Lange Termijn Dividend")
+with tab2:
     render_portfolio_section(df_p, "Dividend")
+    st.divider()
+    # Scanner voor Aristocraten
+    div_watch = ['KO', 'PEP', 'PG', 'JNJ', 'MMM', 'ABBV', 'O', 'LOW', 'MO', 'T']
+    render_scanner_table(div_watch, "Dividend")
 
-with tab_log:
-    st.header("📜 Gerealiseerde Resultaten")
+with tab3:
+    st.header("Gerealiseerde Resultaten")
     if not df_l.empty:
-        strat_filter = st.selectbox("Filter op type", ["Alles", "Growth", "Dividend"])
-        log_display = df_l.copy()
-        
-        if strat_filter != "Alles":
-            # Alleen filteren als de kolom 'Type' bestaat
-            if 'Type' in log_display.columns:
-                log_display = log_display[log_display['Type'] == strat_filter]
-        
+        # Check op kolommen om KeyErrors te voorkomen
         cols = ['Ticker', 'Inleg', 'Verkoopwaarde', 'Winst_Euro', 'Rendement_Perc', 'Type', 'Datum']
-        existing_cols = [c for c in cols if c in log_display.columns]
-        
-        # VEILIG SORTEREN: Check of 'Datum' in de kolommen zit
-        if 'Datum' in log_display.columns:
-            log_display = log_display.sort_values(by='Datum', ascending=False)
-        
-        if not log_display.empty:
-            st.dataframe(log_display[existing_cols], use_container_width=True, hide_index=True)
-        else:
-            st.info(f"Geen resultaten gevonden voor {strat_filter}.")
+        existing = [c for c in cols if c in df_l.columns]
+        st.dataframe(df_l[existing].sort_values(by='Datum', ascending=False) if 'Datum' in df_l.columns else df_l[existing], use_container_width=True, hide_index=True)
     else:
-        st.info("Logboek is nog leeg. Verkoop een aandeel om de historie te starten.")
+        st.info("Nog geen verkopen geregistreerd.")
 
 # --- SIDEBAR TOEVOEGEN ---
 with st.sidebar:
-    st.header("➕ Nieuwe Aankoop")
-    with st.form("add_form"):
+    st.header("➕ Nieuwe Positie")
+    with st.form("add_pos", clear_on_submit=True):
         t = st.text_input("Ticker").upper()
-        i = st.number_input("Inleg (€)", 100)
-        k = st.number_input("Koers", 0.01)
+        i = st.number_input("Inleg (€)", 10)
+        k = st.number_input("Aankoopkoers", 0.01)
         s = st.selectbox("Type", ["Growth", "Dividend"])
         if st.form_submit_button("Toevoegen"):
             requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}", headers=HEADERS, 
                           json={"fields": {"Ticker": t, "Inleg": i, "Koers": k, "Type": s}})
-
+            st.success("Toegevoegd!")
+            time.sleep(1)
             st.rerun()
-
-
-
