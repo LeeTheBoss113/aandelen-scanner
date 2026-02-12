@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-import pandas_ta as ta  # Voor RSI berekeningen
+import pandas_ta as ta
 import requests
 import time
 from datetime import datetime
@@ -56,35 +56,31 @@ def sell_position(row, current_price):
         return True
     return False
 
+def clear_logbook(df_log):
+    """Verwijdert alle records uit de Logboek tabel in Airtable."""
+    with st.spinner("Logboek wordt geleegd..."):
+        for record_id in df_log['airtable_id']:
+            url = f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{record_id}"
+            requests.delete(url, headers=HEADERS)
+        return True
+
 # --- SCANNER LOGICA ---
 def get_scan_metrics(ticker):
     try:
         t = yf.Ticker(ticker)
-        # Haal 1 jaar aan data op voor RSI en Year-performance
         hist = t.history(period="1y")
         if len(hist) < 20: return None
-        
         cur_price = hist['Close'].iloc[-1]
-        
-        # Performance berekeningen
         m6_price = hist['Close'].iloc[-126] if len(hist) > 126 else hist['Close'].iloc[0]
         m12_price = hist['Close'].iloc[0]
-        
         perf_6m = ((cur_price - m6_price) / m6_price) * 100
         perf_12m = ((cur_price - m12_price) / m12_price) * 100
-        
-        # RSI Berekening via pandas_ta
         rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
-        
         return {
-            "Ticker": ticker,
-            "Prijs": round(cur_price, 2),
-            "RSI": round(rsi, 1),
-            "6M %": round(perf_6m, 1),
-            "12M %": round(perf_12m, 1)
+            "Ticker": ticker, "Prijs": round(cur_price, 2), "RSI": round(rsi, 1),
+            "6M %": round(perf_6m, 1), "12M %": round(perf_12m, 1)
         }
-    except:
-        return None
+    except: return None
 
 def render_scanner_table(watchlist, strategy_mode):
     st.subheader(f"🔍 {strategy_mode} Scanner & Suggesties")
@@ -92,39 +88,31 @@ def render_scanner_table(watchlist, strategy_mode):
     for ticker in watchlist:
         data = get_scan_metrics(ticker)
         if data:
-            # Slimme suggestie logica
-            rsi = data['RSI']
-            p6 = data['6M %']
-            
+            rsi, p6 = data['RSI'], data['6M %']
             if strategy_mode == "Growth":
                 if rsi < 35: sug = "🔥 BUY THE DIP"
                 elif rsi > 75: sug = "💰 TAKE PROFIT"
                 elif p6 > 20: sug = "🚀 MOMENTUM"
                 else: sug = "⌛ WAIT"
-            else: # Dividend
+            else:
                 if rsi < 45: sug = "💎 ACCUMULATE"
                 elif rsi > 65: sug = "🛡️ HOLD"
                 else: sug = "✅ STABLE"
-            
             data['Suggestie'] = sug
             results.append(data)
     
     if results:
         df_scan = pd.DataFrame(results)
-        
         def highlight_sug(val):
             color = '#2ecc71' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'PROFIT' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
             return f'background-color: {color}; color: white'
-
         st.dataframe(df_scan.style.applymap(highlight_sug, subset=['Suggestie']), use_container_width=True, hide_index=True)
 
-# --- PORTFOLIO WEERGAVE ---
 def render_portfolio_section(data, strategy_name):
     subset = data[data['Type'] == strategy_name] if 'Type' in data.columns else pd.DataFrame()
     if subset.empty:
         st.info(f"Geen actieve {strategy_name} posities.")
         return
-
     for _, row in subset.iterrows():
         ticker = str(row['Ticker']).upper()
         try:
@@ -133,7 +121,6 @@ def render_portfolio_section(data, strategy_name):
             aantal = row['Inleg'] / row['Koers']
             waarde = aantal * cur_price
             winst = waarde - row['Inleg']
-            
             with st.expander(f"{ticker} | Winst: €{winst:.2f}", expanded=True):
                 c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
                 c1.metric("Inleg", f"€{row['Inleg']:.2f}")
@@ -144,12 +131,10 @@ def render_portfolio_section(data, strategy_name):
                         st.success("Verkocht!")
                         time.sleep(0.5)
                         st.rerun()
-        except:
-            st.warning(f"Kon {ticker} niet laden.")
+        except: st.warning(f"Kon {ticker} niet laden.")
 
 # --- MAIN APP ---
 st.title("💼 My Trading Station 2026")
-
 df_p = get_airtable_data(PORTFOLIO_TABLE)
 df_l = get_airtable_data(LOG_TABLE)
 
@@ -158,28 +143,34 @@ tab1, tab2, tab3 = st.tabs(["🚀 Daytrade / Growth", "💎 Dividend Aristocrats
 with tab1:
     render_portfolio_section(df_p, "Growth")
     st.divider()
-    # Scanner voor Growth
-    growth_watch = ['NVDA', 'TSLA', 'PLTR', 'AMD', 'COIN', 'MSTR', 'ASML.AS']
-    render_scanner_table(growth_watch, "Growth")
+    render_scanner_table(['NVDA', 'TSLA', 'PLTR', 'AMD', 'COIN', 'MSTR', 'ASML.AS'], "Growth")
 
 with tab2:
     render_portfolio_section(df_p, "Dividend")
     st.divider()
-    # Scanner voor Aristocraten
-    div_watch = ['KO', 'PEP', 'PG', 'JNJ', 'MMM', 'ABBV', 'O', 'LOW', 'MO', 'T']
-    render_scanner_table(div_watch, "Dividend")
+    render_scanner_table(['KO', 'PEP', 'PG', 'JNJ', 'MMM', 'ABBV', 'O', 'LOW', 'MO', 'T'], "Dividend")
 
 with tab3:
     st.header("Gerealiseerde Resultaten")
     if not df_l.empty:
-        # Check op kolommen om KeyErrors te voorkomen
         cols = ['Ticker', 'Inleg', 'Verkoopwaarde', 'Winst_Euro', 'Rendement_Perc', 'Type', 'Datum']
         existing = [c for c in cols if c in df_l.columns]
         st.dataframe(df_l[existing].sort_values(by='Datum', ascending=False) if 'Datum' in df_l.columns else df_l[existing], use_container_width=True, hide_index=True)
+        
+        # --- WIS KNOP SECTIE ---
+        st.divider()
+        st.subheader("⚠️ Gegevensbeheer")
+        col_abc, col_def = st.columns([1, 2])
+        confirm = col_abc.checkbox("Ik wil het logboek definitief wissen")
+        if confirm:
+            if col_abc.button("🗑️ Wis nu alle records"):
+                if clear_logbook(df_l):
+                    st.success("Logboek volledig gewist!")
+                    time.sleep(1)
+                    st.rerun()
     else:
         st.info("Nog geen verkopen geregistreerd.")
 
-# --- SIDEBAR TOEVOEGEN ---
 with st.sidebar:
     st.header("➕ Nieuwe Positie")
     with st.form("add_pos", clear_on_submit=True):
