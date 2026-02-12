@@ -9,8 +9,8 @@ import time
 # --- CONFIG ---
 st.set_page_config(layout="wide", page_title="Dual-Strategy Simulator 2026")
 
-# Jouw API URL
-API_URL = "https://script.google.com/macros/s/AKfycby4g5aay9DphM480bDfATrV5cxkCat9LN-4C_ZiiA446SKFfMWVBmiQaeLtX-Jm1rUB/exec"
+# Jouw API URL (Vergeet niet opnieuw te implementeren in Google Script bij wijzigingen!)
+API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
 
 # --- STYLING HELPERS ---
 def style_action(val):
@@ -37,23 +37,21 @@ def style_portfolio(ticker, p1, p2):
 def get_data():
     active_cols = ["Ticker", "Inleg", "Koers"]
     log_cols = ["Datum", "Ticker", "Inleg", "Winst"]
-    
     try:
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10).json()
         
         def clean(data_key, fallback_cols):
             raw_data = r.get(data_key, [])
-            # Als data ontbreekt of alleen een header heeft die niet klopt
-            if not raw_data or len(raw_data) < 1:
+            if not raw_data or len(raw_data) <= 1:
                 return pd.DataFrame(columns=fallback_cols)
             
-            # Gebruik de eerste rij als headers
-            headers = raw_data[0]
+            # Headers opschonen (spaties verwijderen)
+            headers = [str(h).strip() for h in raw_data[0]]
             df = pd.DataFrame(raw_data[1:], columns=headers)
             
-            # Check of de essentiële 'Ticker' kolom er wel echt is
-            if 'Ticker' not in df.columns:
-                return pd.DataFrame(columns=fallback_cols)
+            # Fallback: als 'Ticker' niet exact wordt gevonden, neem de eerste kolom
+            if 'Ticker' not in df.columns and len(df.columns) > 0:
+                df.rename(columns={df.columns[0]: 'Ticker'}, inplace=True)
                 
             for col in ['Inleg', 'Koers', 'Winst']:
                 if col in df.columns:
@@ -62,9 +60,8 @@ def get_data():
             
         return clean('active', active_cols), clean('log', log_cols), \
                clean('active_div', active_cols), clean('log_div', log_cols)
-               
     except Exception as e:
-        # Als de API helemaal niet bereikbaar is
+        st.error(f"⚠️ Verbindingsfout: {e}")
         return pd.DataFrame(columns=active_cols), pd.DataFrame(columns=log_cols), \
                pd.DataFrame(columns=active_cols), pd.DataFrame(columns=log_cols)
 
@@ -72,10 +69,8 @@ def get_data():
 def fetch_market(tickers, include_div=False):
     results = {}
     if not tickers: return results
-    # Verwijder duplicaten en lege waardes
-    tickers = list(set([t for t in tickers if t]))
-    
-    for t in tickers:
+    unique_tickers = list(set([t for t in tickers if t]))
+    for t in unique_tickers:
         try:
             tk = yf.Ticker(t)
             h = tk.history(period="1y")
@@ -95,7 +90,7 @@ df_a, df_l, df_a_div, df_l_div = get_data()
 growth_active_list = df_a['Ticker'].tolist() if not df_a.empty else []
 div_active_list = df_a_div['Ticker'].tolist() if not df_a_div.empty else []
 
-# --- UI OPBOUW ---
+# --- UI ---
 st.title("🚀 Dual-Strategy Simulator 2026")
 
 c_m1, c_m2 = st.columns(2)
@@ -111,9 +106,9 @@ tab1, tab2, tab3 = st.tabs(["📈 Growth Portfolio", "💎 Dividend Portfolio", 
 def render_strategy_view(df_active, is_div, strategy_name):
     watchlist = ['NVDA','TSLA','AAPL','MSFT','AMD','PLTR'] if not is_div else ['KO','PEP','O','JNJ','PG','INGA.AS']
     
-    # Haal data op voor watchlist + wat je al bezit
-    current_tickers = list(set(watchlist + (df_active['Ticker'].tolist() if not df_active.empty else [])))
-    market_data = fetch_market(current_tickers, include_div=is_div)
+    # Combineer watchlist en actieve posities voor data ophalen
+    all_needed = list(set(watchlist + (df_active['Ticker'].tolist() if not df_active.empty else [])))
+    market_data = fetch_market(all_needed, include_div=is_div)
     
     col_left, col_right = st.columns([1, 2])
     
@@ -135,7 +130,7 @@ def render_strategy_view(df_active, is_div, strategy_name):
             for _, r in df_active.iterrows():
                 if r['Ticker'] in market_data:
                     d = market_data[r['Ticker']]
-                    # Kostenberekening (0.3% voor US aandelen zonder punt in ticker)
+                    # Berekening winst (0.3% kosten voor US aandelen)
                     netto = ((r['Inleg']/r['Koers'])*d['price']) * (1.0 if "." in r['Ticker'] else 0.997) - r['Inleg']
                     pf.append({
                         "Ticker": r['Ticker'], "Inleg": r['Inleg'], "Aankoop": r['Koers'], 
@@ -151,13 +146,13 @@ def render_strategy_view(df_active, is_div, strategy_name):
                     row = df_pf[df_pf['Ticker'] == sel].iloc[0]
                     requests.post(API_URL, data=json.dumps({"method":"delete","ticker":sel,"inleg":row['Inleg'],"winst":row['Winst'],"is_div":is_div}))
                     st.rerun()
-        else: 
-            st.info("Geen actieve trades in deze categorie.")
+        else:
+            st.info(f"Geen actieve {strategy_name} trades.")
 
     st.divider()
     st.subheader(f"🔍 {strategy_name} Scanner")
     scan_results = []
-    # Alleen watchlist scannen voor de tabel
+    # Gebruik alleen watchlist voor scanner overzicht
     scanner_market = fetch_market(watchlist, include_div=is_div)
     for k, v in scanner_market.items():
         status = v['status']
@@ -180,23 +175,13 @@ def render_strategy_view(df_active, is_div, strategy_name):
             use_container_width=True, hide_index=True
         )
 
-with tab1:
-    render_strategy_view(df_a, False, "Growth")
-
-with tab2:
-    render_strategy_view(df_a_div, True, "Dividend")
-
+with tab1: render_strategy_view(df_a, False, "Growth")
+with tab2: render_strategy_view(df_a_div, True, "Dividend")
 with tab3:
-    st.subheader("🧹 Database Beheer")
-    c_b1, c_b2 = st.columns(2)
-    with c_b1:
-        st.write("Growth Management")
-        if st.button("Reset Growth Active"):
-            requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":False}))
-            st.rerun()
-    with c_b2:
-        st.write("Dividend Management")
-        if st.button("Reset Dividend Active"):
-            requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":True}))
-
-            st.rerun()
+    st.subheader("🧹 Beheer")
+    if st.button("Reset Growth Portfolio"):
+        requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":False}))
+        st.rerun()
+    if st.button("Reset Dividend Portfolio"):
+        requests.post(API_URL, data=json.dumps({"method":"reset_active","is_div":True}))
+        st.rerun()
