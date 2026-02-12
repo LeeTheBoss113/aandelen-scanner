@@ -8,7 +8,7 @@ from datetime import datetime
 # --- CONFIG ---
 AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
 BASE_ID = "appgvzDsvbvKi7e45"
-TABLE_NAME = "Portfolio"
+PORTFOLIO_TABLE = "Portfolio"
 LOG_TABLE = "Logboek"
 
 HEADERS = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
@@ -87,4 +87,5 @@ st.subheader("📜 Gerealiseerde Winsten (Logboek)")
 df_l = get_airtable_data(LOG_TABLE)
 if not df_l.empty:
     st.dataframe(df_l[['Ticker', 'Winst_Euro', 'Rendement_Perc', 'Datum']], use_container_width=True)
+
     st.metric("Totaal Gerealiseerd", f"€{df_l['Winst_Euro'].sum():.2f}")
