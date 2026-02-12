@@ -6,9 +6,8 @@ import requests
 import json
 import time
 
-# --- CONFIG ---
-AIRTABLE_TOKEN = "JOUW_PAT_TOKEN_HIER"
-BASE_ID = "JOUW_BASE_ID_HIER"
+AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
+BASE_ID = "appgvzDsvbvKi7e45"
 TABLE_NAME = "Portfolio"
 
 URL = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}"
@@ -108,4 +107,5 @@ def render_strategy(strategy_name, rsi_buy_threshold):
             st.info("Geen aandelen gevonden in deze categorie.")
 
 with tab1: render_strategy("Growth", 30)
+
 with tab2: render_strategy("Dividend", 45)
