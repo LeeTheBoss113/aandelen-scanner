@@ -1,91 +1,73 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
+import pandas_ta as ta
 import requests
 import json
 import time
 
-# --- DE ENIGE ECHTE URL ---
-# VERVANG DIT DOOR DE URL VAN JE NIEUWE SCRIPT (UIT DE NIEUWE SHEET)
-API_URL = "https://script.google.com/macros/s/AKfycbzbmiiW9CfjmchRe-2Ii0rKUWjB84MTdCC2hYAXkNosD9R4PzYR1Fwh0h8Wv4P7-XE3/exec"
+# --- CONFIG ---
+st.set_page_config(layout="wide", page_title="Scanner 2026 - Rollback")
 
-st.set_page_config(layout="wide", page_title="Stabiel Dashboard 2026")
+# PLAK HIER JE NIEUWE URL VAN JE NIEUWE GOOGLE SHEET
+API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
 
-# --- DEBUG INFO IN DE SIDEBAR ---
-with st.sidebar:
-    st.write("### 🛠 Verbindingscontrole")
-    st.info(f"Huidige API URL eindigt op: ...{API_URL[-15:]}")
-    if st.button("🔄 Forceer Refresh"):
-        st.cache_data.clear()
-        st.rerun()
-
-# --- DATA FUNCTIES ---
+# --- DATA OPHALEN (STABIELE METHODE) ---
 def get_data():
     try:
-        # Timestamp voorkomt dat de browser 'oude' data uit het geheugen laat zien
         r = requests.get(f"{API_URL}?t={int(time.time())}", timeout=10).json()
         
-        # We bouwen de tabel op uit de JSON data
-        active_data = r.get('active', [])
-        log_data = r.get('log', [])
-        
-        if len(active_data) > 1:
-            df_a = pd.DataFrame(active_data[1:], columns=active_data[0])
-        else:
-            df_a = pd.DataFrame(columns=["Ticker", "Inleg", "Koers", "Type"])
+        # We gebruiken de namen die we in de nieuwe sheet hebben gezet
+        def clean(raw_data, fallback_cols):
+            if not raw_data or len(raw_data) <= 1:
+                return pd.DataFrame(columns=fallback_cols)
+            # Headers van rij 1, data van de rest
+            df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+            return df
             
-        if len(log_data) > 1:
-            df_l = pd.DataFrame(log_data[1:], columns=log_data[0])
-        else:
-            df_l = pd.DataFrame(columns=["Datum", "Ticker", "Inleg", "Winst", "Type"])
-            
+        df_a = clean(r.get('active', []), ["Ticker", "Inleg", "Koers", "Type"])
+        df_l = clean(r.get('log', []), ["Datum", "Ticker", "Inleg", "Winst", "Type"])
         return df_a, df_l
-    except Exception as e:
-        st.error(f"Kan geen data ophalen. Check de URL. Fout: {e}")
+    except:
         return pd.DataFrame(columns=["Ticker", "Inleg", "Koers", "Type"]), pd.DataFrame()
 
-# --- DATA LADEN ---
-df_a, df_l = get_data()
+# --- INTERFACE ---
+df_active, df_log = get_data()
 
-# --- UI ---
-st.title("🛡️ Stabiel Dashboard 2026")
+st.title("🚀 Dual-Strategy Dashboard (v11-02)")
 
-# Splitsen op basis van kolom 'Type' (we maken het hoofdletter-ongevoelig)
-df_a['Type'] = df_a['Type'].astype(str).str.strip().upper()
-growth = df_a[df_a['Type'] == "GROWTH"]
-dividend = df_a[df_a['Type'] == "DIVIDEND"]
+# Splitsen van de data
+if not df_active.empty and 'Type' in df_active.columns:
+    # Zorg dat 'Type' geen vreemde spaties heeft
+    df_active['Type'] = df_active['Type'].astype(str).str.strip()
+    growth_df = df_active[df_active['Type'].str.upper() == "GROWTH"]
+    div_df = df_active[df_active['Type'].str.upper() == "DIVIDEND"]
+else:
+    growth_df = pd.DataFrame()
+    div_df = pd.DataFrame()
 
-tab1, tab2, tab3 = st.tabs(["🚀 Growth", "💎 Dividend", "📜 Logboek"])
+t1, t2, t3 = st.tabs(["🚀 Growth", "💎 Dividend", "📜 Logboek"])
 
-def render_view(df, p_type_label):
-    st.subheader(f"Portfolio: {p_type_label}")
+def render_section(df, label):
+    st.subheader(f"Actieve {label} Posities")
     if not df.empty:
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info(f"Geen {p_type_label} aandelen gevonden in de nieuwe sheet.")
-
-    with st.expander(f"➕ Voeg {p_type_label} toe"):
-        with st.form(f"form_{p_type_label}"):
-            t = st.text_input("Ticker (bijv. NVDA)").upper().strip()
-            i = st.number_input("Inleg (€)", 100)
-            k = st.number_input("Koers", 0.0)
+        st.info(f"Nog geen {label} aandelen in de nieuwe sheet.")
+    
+    with st.expander(f"➕ Voeg {label} toe"):
+        with st.form(f"f_{label}"):
+            tick = st.text_input("Ticker").upper()
+            inl = st.number_input("Inleg (€)", 100)
+            krs = st.number_input("Koers", 0.0)
             if st.form_submit_button("Opslaan"):
-                if t and k > 0:
-                    payload = {"ticker": t, "inleg": i, "koers": k, "type": p_type_label.upper()}
-                    response = requests.post(API_URL, data=json.dumps(payload))
-                    if response.status_code == 200:
-                        st.success(f"{t} opgeslagen!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Fout bij opslaan.")
+                requests.post(API_URL, data=json.dumps({
+                    "ticker": tick, "inleg": inl, "koers": krs, "type": label
+                }))
+                st.rerun()
 
-with tab1:
-    render_view(growth, "Growth")
-
-with tab2:
-    render_view(dividend, "Dividend")
-
-with tab3:
-    st.subheader("Laatste verkopen")
-
-    st.dataframe(df_l, use_container_width=True, hide_index=True)
+with t1: render_section(growth_df, "Growth")
+with t2: render_section(div_df, "Dividend")
+with t3:
+    st.subheader("Logboek (Verkopen)")
+    st.dataframe(df_log, use_container_width=True, hide_index=True)
