@@ -9,7 +9,7 @@ import time
 # --- CONFIG & STYLING ---
 st.set_page_config(layout="wide", page_title="Pure Dual-Strategy 2026")
 
-API_URL = "https://script.google.com/macros/s/AKfycbz-4mkyZJISTvixd3JsNHIj9ja3N9824MEHIBsoIZgd_tkx2fM6Yc5ota6kW4WjRKO_/exec"
+API_URL = "https://script.google.com/macros/s/AKfycbzYOecTWF2OOz6hOcgqMwClU3IIFSlY32oVPWmmrJdcNgjx7PhV_f0eXOqsbyEabAjc/exec"
 
 def style_action(val):
     if '✅' in val or '💎' in val: color = '#1e8449'
@@ -132,4 +132,5 @@ with t3:
     st.subheader("Historisch Logboek")
     if not df_log.empty:
         st.dataframe(df_log.sort_values('Datum', ascending=False), use_container_width=True, hide_index=True)
+
     else: st.info("Nog geen afgesloten trades.")
