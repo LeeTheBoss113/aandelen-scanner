@@ -7,7 +7,7 @@ import time
 # --- AIRTABLE CONFIG ---
 # Zorg dat deze tokens exact kloppen!
 AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
-BASE_ID = "JOUW_BASE_ID_HIER"
+BASE_ID = "appgvzDsvbvKi7e45"
 TABLE_NAME = "Portfolio"
 
 URL = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}"
@@ -134,3 +134,4 @@ with st.sidebar:
     if st.button("Forceer Refresh"):
 
         st.rerun()
+
