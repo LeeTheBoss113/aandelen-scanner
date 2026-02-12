@@ -33,28 +33,46 @@ def get_airtable_data(table_name):
         return pd.DataFrame()
 
 def sell_position(row, current_price):
-    aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
-    verkoopwaarde = aantal * current_price
-    winst_eur = verkoopwaarde - row['Inleg']
-    rendement = (winst_eur / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
-    
-    log_payload = {
-        "fields": {
-            "Ticker": str(row['Ticker']).upper(),
-            "Inleg": float(row['Inleg']),
-            "Verkoopwaarde": round(float(verkoopwaarde), 2),
-            "Winst_Euro": round(float(winst_eur), 2),
-            "Rendement_Perc": round(float(rendement), 2),
-            "Type": row.get('Type', 'Growth'),
-            "Datum": datetime.now().isoformat()
+    try:
+        # 1. Berekeningen
+        aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
+        verkoopwaarde = aantal * current_price
+        winst_eur = verkoopwaarde - row['Inleg']
+        rendement = (winst_eur / row['Inleg'] * 100) if row['Inleg'] > 0 else 0
+        
+        # 2. Data voorbereiden (alles expliciet naar juiste type omzetten)
+        log_payload = {
+            "fields": {
+                "Ticker": str(row['Ticker']).upper(),
+                "Inleg": float(row['Inleg']),
+                "Verkoopwaarde": round(float(verkoopwaarde), 2),
+                "Winst_Euro": round(float(winst_eur), 2),
+                "Rendement_Perc": round(float(rendement), 2),
+                "Type": str(row.get('Type', 'Growth')),
+                "Datum": datetime.now().isoformat()
+            }
         }
-    }
-    res = requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}", headers=HEADERS, json=log_payload)
-    if res.status_code == 200:
-        requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}/{row['airtable_id']}", headers=HEADERS)
-        return True
-    return False
-
+        
+        # 3. Schrijven naar Logboek
+        log_url = f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}"
+        res = requests.post(log_url, headers=HEADERS, json=log_payload)
+        
+        if res.status_code == 200:
+            # 4. Alleen bij succes verwijderen uit Portfolio
+            del_url = f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}/{row['airtable_id']}"
+            del_res = requests.delete(del_url, headers=HEADERS)
+            if del_res.status_code == 200:
+                return True
+            else:
+                st.error(f"Logboek gelukt, maar kon niet verwijderen uit Portfolio: {del_res.text}")
+        else:
+            # DIT LAAT ZIEN WAT ER MIS IS MET JE KOLOMMEN
+            st.error(f"Airtable Logboek fout: {res.status_code} - {res.text}")
+            return False
+            
+    except Exception as e:
+        st.error(f"Fout in verkoop-logica: {e}")
+        return False
 # --- UI START ---
 st.title("🏹 Trading Center 2026")
 
@@ -155,3 +173,4 @@ with st.sidebar:
                           json={"fields": {"Ticker": t, "Inleg": i, "Koers": k, "Type": s}})
 
             st.rerun()
+
