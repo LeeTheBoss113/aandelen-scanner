@@ -89,3 +89,4 @@ if not df_l.empty:
     st.dataframe(df_l[['Ticker', 'Winst_Euro', 'Rendement_Perc', 'Datum']], use_container_width=True)
 
     st.metric("Totaal Gerealiseerd", f"€{df_l['Winst_Euro'].sum():.2f}")
+
