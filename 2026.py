@@ -72,11 +72,12 @@ def get_scan_metrics(ticker):
         m6 = hist['Close'].iloc[-126] if len(hist) > 126 else hist['Close'].iloc[0]
         rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
         p6 = ((cur-m6)/m6)*100
+        p12 = ((cur-hist['Close'].iloc[0])/hist['Close'].iloc[0])*100
+        
         trend = "📈 Bullish" if p6 > 5 else "📉 Bearish" if p6 < -5 else "➡️ Side"
         return {
             "Ticker": ticker, "Trend": trend, "Prijs": round(cur, 2), 
-            "RSI": round(rsi, 1), "6M %": round(p6, 1),
-            "12M %": round(((cur-hist['Close'].iloc[0])/hist['Close'].iloc[0])*100, 1)
+            "RSI": round(rsi, 1), "6M %": round(p6, 1), "12M %": round(p12, 1)
         }
     except: return None
 
@@ -90,10 +91,20 @@ def show_scanner(watchlist, mode, df_portfolio):
     for t in watchlist:
         m = get_scan_metrics(t)
         if m:
+            rsi = m['RSI']
+            p12 = m['12M %']
+            
             if mode == "Growth":
-                m['Suggestie'] = "🔥 BUY DIP" if m['RSI'] < 35 else "💰 SELL" if m['RSI'] > 75 else "🚀 MOMENTUM" if m['6M %'] > 15 else "⌛ WAIT"
-            else:
-                m['Suggestie'] = "💎 ACCUMULATE" if m['RSI'] < 45 else "🛡️ HOLD"
+                # LOGICA VOOR KOPEN EN VERKOPEN
+                if rsi < 35: m['Suggestie'] = "🔥 BUY DIP"
+                elif rsi > 75: m['Suggestie'] = "💰 TAKE PROFIT" # Het oververhitte sein
+                elif rsi > 70 and p12 > 40: m['Suggestie'] = "⚠️ PEAK ALERT" # De piek-waarschuwing
+                elif m['6M %'] > 15: m['Suggestie'] = "🚀 MOMENTUM"
+                else: m['Suggestie'] = "⌛ WAIT"
+            else: # Dividend
+                if rsi < 45: m['Suggestie'] = "💎 ACCUMULATE"
+                elif rsi > 68: m['Suggestie'] = "🛡️ HOLD/REDUCE"
+                else: m['Suggestie'] = "✅ STABLE"
             results.append(m)
     
     if not results: return
@@ -103,8 +114,15 @@ def show_scanner(watchlist, mode, df_portfolio):
         styles = [''] * len(row)
         if row['Ticker'] in owned_tickers:
             styles[0] = 'background-color: #f39c12; color: white; font-weight: bold'
+        
         val = row['Suggestie']
-        sug_c = '#27ae60' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'SELL' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
+        # Kleurcodes
+        if 'BUY' in val or 'ACCUMULATE' in val: sug_c = '#27ae60' # Groen
+        elif 'PROFIT' in val or 'PEAK' in val: sug_c = '#e67e22' # Donker oranje/Roodachtig
+        elif 'SELL' in val: sug_c = '#e74c3c' # Rood
+        elif 'MOMENTUM' in val: sug_c = '#3498db' # Blauw
+        else: sug_c = '#7f8c8d' # Grijs
+            
         styles[-1] = f'background-color: {sug_c}; color: white; font-weight: bold'
         return styles
 
@@ -137,10 +155,10 @@ DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'M
 
 with st.sidebar:
     st.title("📊 My Assistant")
-    with st.expander("ℹ️ Spiekbriefje", expanded=False):
-        st.write("**Momentum:** Koerskracht (6M > 15%).")
-        st.write("**RSI < 35:** Onderkoeld (Koopkans).")
-        st.write("**Oranje Ticker:** Reeds in bezit.")
+    with st.expander("ℹ️ Spiekbriefje", expanded=True):
+        st.write("**💰 Take Profit:** RSI is zeer hoog (>75). De rek is er waarschijnlijk tijdelijk uit.")
+        st.write("**⚠️ Peak Alert:** Aandeel staat op een jaar-top én is oververhit. Pas op voor omkeer.")
+        st.write("**🔥 Buy Dip:** RSI < 35. Aandeel is technisch 'goedkoop'.")
     
     st.divider()
     gw, dw = 0, 0
