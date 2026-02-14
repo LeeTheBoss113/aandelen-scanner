@@ -125,8 +125,13 @@ with st.sidebar:
 
 tab1, tab2, tab3 = st.tabs(["🚀 Growth", "💎 Dividend", "📜 Logboek"])
 
-def show_scanner(watchlist, mode):
+def show_scanner(watchlist, mode, df_portfolio):
     results = []
+    # Maak een lijst van tickers die we al bezitten voor snelle check
+    owned_tickers = []
+    if not df_portfolio.empty:
+        owned_tickers = df_portfolio['Ticker'].str.upper().tolist()
+
     for t in watchlist:
         m = get_scan_metrics(t)
         if m:
@@ -135,48 +140,21 @@ def show_scanner(watchlist, mode):
             else:
                 m['Suggestie'] = "💎 ACCUMULATE" if m['RSI'] < 45 else "🛡️ HOLD"
             results.append(m)
+    
     df = pd.DataFrame(results)
     
-    # Kleurtjes voor de suggesties
-    def style_sug(val):
-        color = '#27ae60' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'SELL' in val else '#3498db' if 'MOMENTUM' in val else 'gray'
-        return f'color: white; background-color: {color}; font-weight: bold'
-    
-    st.dataframe(df.style.applymap(style_sug, subset=['Suggestie']), use_container_width=True, hide_index=True)
+    # Styling functie
+    def style_scanner(row):
+        styles = [''] * len(row)
+        # Check of ticker in bezit is (1e kolom)
+        if row['Ticker'] in owned_tickers:
+            styles[0] = 'background-color: #f39c12; color: white; font-weight: bold' # Oranje voor 'In bezit'
+        
+        # Kleur voor Suggestie (laatste kolom)
+        val = row['Suggestie']
+        sug_color = '#27ae60' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'SELL' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
+        styles[-1] = f'background-color: {sug_color}; color: white; font-weight: bold'
+        
+        return styles
 
-with tab1:
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        st.subheader("Mijn Posities")
-        # De compacte portfolio functie van de vorige stap hier invoegen
-        subset = df_p[df_p['Type'] == "Growth"] if not df_p.empty else pd.DataFrame()
-        for _, r in subset.iterrows():
-            with st.expander(f"{r['Ticker']} | €{r['Inleg']}"):
-                if st.button(f"Verkoop {r['Ticker']}", key=f"v_{r['airtable_id']}"):
-                    p = yf.Ticker(r['Ticker']).history(period="1d")['Close'].iloc[-1]
-                    if sell_position(r, p): st.rerun()
-    with c2:
-        st.subheader("Live Scanner (Momentum & RSI)")
-        show_scanner(GROWTH_WATCH, "Growth")
-
-with tab2:
-    c1b, c2b = st.columns([1, 2])
-    with c1b:
-        st.subheader("Mijn Dividend")
-        subset_d = df_p[df_p['Type'] == "Dividend"] if not df_p.empty else pd.DataFrame()
-        for _, r in subset_d.iterrows():
-            with st.expander(f"{r['Ticker']}"):
-                if st.button(f"Verkoop {r['Ticker']}", key=f"vd_{r['airtable_id']}"):
-                    p = yf.Ticker(r['Ticker']).history(period="1d")['Close'].iloc[-1]
-                    if sell_position(r, p): st.rerun()
-    with c2b:
-        st.subheader("Aristocrats Scanner")
-        show_scanner(DIVIDEND_WATCH, "Dividend")
-
-with tab3:
-    if not df_l.empty:
-        st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
-        if st.checkbox("Logboek wissen"):
-            if st.button("Definitief Verwijderen"):
-                for rid in df_l['airtable_id']: requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
-                st.rerun()
+    st.dataframe(df.style.apply(style_scanner, axis=1), use_container_width=True, hide_index=True)
