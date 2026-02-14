@@ -21,6 +21,7 @@ st.markdown("""
     <style>
     [data-testid="stExpander"] { border: 1px solid #f0f2f6; border-radius: 8px; margin-bottom: -15px; }
     .stMetric { padding: 0px !important; }
+    div[data-testid="stVerticalBlock"] > div { spacing: 0rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -71,65 +72,19 @@ def get_scan_metrics(ticker):
         m6 = hist['Close'].iloc[-126] if len(hist) > 126 else hist['Close'].iloc[0]
         rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
         p6 = ((cur-m6)/m6)*100
-        
-        # Trend bepalen op basis van Momentum (6 maanden)
-        trend_icon = "📈 Bullish" if p6 > 5 else "📉 Bearish" if p6 < -5 else "➡️ Side"
-        
+        trend = "📈 Bullish" if p6 > 5 else "📉 Bearish" if p6 < -5 else "➡️ Side"
         return {
-            "Ticker": ticker, 
-            "Trend": trend_icon,
-            "Prijs": round(cur, 2), 
-            "RSI": round(rsi, 1), 
-            "6M %": round(p6, 1),
+            "Ticker": ticker, "Trend": trend, "Prijs": round(cur, 2), 
+            "RSI": round(rsi, 1), "6M %": round(p6, 1),
             "12M %": round(((cur-hist['Close'].iloc[0])/hist['Close'].iloc[0])*100, 1)
         }
     except: return None
 
-# --- UI ---
-df_p = get_airtable_data(PORTFOLIO_TABLE)
-df_l = get_airtable_data(LOG_TABLE)
-
-GROWTH_WATCH = ['NVDA', 'TSLA', 'PLTR', 'AMD', 'ASML.AS', 'ADYEN.AS', 'COIN', 'MSTR', 'META', 'AMZN', 'GOOGL', 'NFLX', 'SHOP', 'SNOW', 'ARM']
-DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'MO', 'T', 'CVX', 'XOM', 'SCHD', 'VICI']
-
-with st.sidebar:
-    st.title("📊 My Brain Helper")
-    
-    # SNELLE SPIEKBRIEF VOOR HET BREIN
-    with st.expander("ℹ️ Wat betekende het ook alweer?", expanded=False):
-        st.write("**Momentum:** De vaart van de koers. Als de trein eenmaal rijdt (6M > 20%), denderen we vaak door.")
-        st.write("**RSI < 35:** Aandeel is 'onderkoeld'. Vaak een mooi koopmoment (Dip).")
-        st.write("**RSI > 70:** Aandeel is 'oververhit'. Misschien tijd om wat winst te pakken.")
-
-    st.divider()
-    # Totaal Winst berekening
-    gw, dw = 0, 0
-    if not df_p.empty:
-        for _, r in df_p.iterrows():
-            try:
-                p = yf.Ticker(r['Ticker']).history(period="1d")['Close'].iloc[-1]
-                w = ((r['Inleg']/r['Koers']) * p) - r['Inleg']
-                if r['Type'] == "Growth": gw += w
-                else: dw += w
-            except: pass
-    
-    st.metric("🚀 Totaal Growth Winst", f"€{gw:.2f}")
-    st.metric("💎 Totaal Dividend Winst", f"€{dw:.2f}")
-    
-    st.divider()
-    st.subheader("🔔 RSI Alerts (<35)")
-    for t in (GROWTH_WATCH[:5] + DIVIDEND_WATCH[:5]):
-        m = get_scan_metrics(t)
-        if m and m['RSI'] < 35:
-            st.error(f"KOOPKANS: {t} (RSI: {m['RSI']})")
-
-tab1, tab2, tab3 = st.tabs(["🚀 Growth", "💎 Dividend", "📜 Logboek"])
-
+# --- UI COMPONENTEN ---
 def show_scanner(watchlist, mode, df_portfolio):
     results = []
-    # Maak een lijst van tickers die we al bezitten voor snelle check
     owned_tickers = []
-    if not df_portfolio.empty:
+    if not df_portfolio.empty and 'Ticker' in df_portfolio.columns:
         owned_tickers = df_portfolio['Ticker'].str.upper().tolist()
 
     for t in watchlist:
@@ -141,20 +96,100 @@ def show_scanner(watchlist, mode, df_portfolio):
                 m['Suggestie'] = "💎 ACCUMULATE" if m['RSI'] < 45 else "🛡️ HOLD"
             results.append(m)
     
+    if not results: return
     df = pd.DataFrame(results)
     
-    # Styling functie
     def style_scanner(row):
         styles = [''] * len(row)
-        # Check of ticker in bezit is (1e kolom)
         if row['Ticker'] in owned_tickers:
-            styles[0] = 'background-color: #f39c12; color: white; font-weight: bold' # Oranje voor 'In bezit'
-        
-        # Kleur voor Suggestie (laatste kolom)
+            styles[0] = 'background-color: #f39c12; color: white; font-weight: bold'
         val = row['Suggestie']
-        sug_color = '#27ae60' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'SELL' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
-        styles[-1] = f'background-color: {sug_color}; color: white; font-weight: bold'
-        
+        sug_c = '#27ae60' if 'BUY' in val or 'ACCUMULATE' in val else '#e74c3c' if 'SELL' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
+        styles[-1] = f'background-color: {sug_c}; color: white; font-weight: bold'
         return styles
 
     st.dataframe(df.style.apply(style_scanner, axis=1), use_container_width=True, hide_index=True)
+
+def render_portfolio_compact(df, strategy_name):
+    subset = df[df['Type'] == strategy_name] if not df.empty and 'Type' in df.columns else pd.DataFrame()
+    if subset.empty:
+        st.info(f"Geen actieve {strategy_name} posities.")
+        return
+    for _, row in subset.iterrows():
+        ticker = str(row['Ticker']).upper()
+        try:
+            p = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
+            winst = ((row['Inleg']/row['Koers']) * p) - row['Inleg']
+            with st.expander(f"**{ticker}** | Winst: **€{winst:.2f}**"):
+                c1, c2, c3 = st.columns([1,1,0.5])
+                c1.write(f"Inleg: €{row['Inleg']:.0f}")
+                c2.write(f"Res: {((winst/row['Inleg'])*100):.1f}%")
+                if c3.button("🗑️", key=f"del_{row['airtable_id']}"):
+                    if sell_position(row, p): st.rerun()
+        except: pass
+
+# --- MAIN DASHBOARD ---
+df_p = get_airtable_data(PORTFOLIO_TABLE)
+df_l = get_airtable_data(LOG_TABLE)
+
+GROWTH_WATCH = ['NVDA', 'TSLA', 'PLTR', 'AMD', 'ASML.AS', 'ADYEN.AS', 'COIN', 'MSTR', 'META', 'AMZN', 'GOOGL', 'NFLX', 'SHOP', 'SNOW', 'ARM']
+DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'MO', 'T', 'CVX', 'XOM', 'SCHD', 'VICI']
+
+with st.sidebar:
+    st.title("📊 My Assistant")
+    with st.expander("ℹ️ Spiekbriefje", expanded=False):
+        st.write("**Momentum:** Koerskracht (6M > 15%).")
+        st.write("**RSI < 35:** Onderkoeld (Koopkans).")
+        st.write("**Oranje Ticker:** Reeds in bezit.")
+    
+    st.divider()
+    gw, dw = 0, 0
+    if not df_p.empty:
+        for _, r in df_p.iterrows():
+            try:
+                cur_p = yf.Ticker(r['Ticker']).history(period="1d")['Close'].iloc[-1]
+                w = ((r['Inleg']/r['Koers']) * cur_p) - r['Inleg']
+                if r['Type'] == "Growth": gw += w
+                else: dw += w
+            except: pass
+    st.metric("🚀 Growth Winst", f"€{gw:.2f}")
+    st.metric("💎 Dividend Winst", f"€{dw:.2f}")
+    
+    st.divider()
+    with st.form("add_new"):
+        st.subheader("➕ Nieuwe Positie")
+        t_in = st.text_input("Ticker").upper()
+        i_in = st.number_input("Inleg", 10)
+        k_in = st.number_input("Koers", 0.01)
+        s_in = st.selectbox("Type", ["Growth", "Dividend"])
+        if st.form_submit_button("Toevoegen"):
+            requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}", headers=HEADERS, json={"fields": {"Ticker": t_in, "Inleg": i_in, "Koers": k_in, "Type": s_in}})
+            st.rerun()
+
+tab1, tab2, tab3 = st.tabs(["🚀 Growth Strategy", "💎 Dividend Wealth", "📜 Logboek"])
+
+with tab1:
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.subheader("Portefeuille")
+        render_portfolio_compact(df_p, "Growth")
+    with c2:
+        st.subheader("Market Scanner")
+        show_scanner(GROWTH_WATCH, "Growth", df_p)
+
+with tab2:
+    c1b, c2b = st.columns([1, 2])
+    with c1b:
+        st.subheader("Portefeuille")
+        render_portfolio_compact(df_p, "Dividend")
+    with c2b:
+        st.subheader("Aristocrats Scanner")
+        show_scanner(DIVIDEND_WATCH, "Dividend", df_p)
+
+with tab3:
+    if not df_l.empty:
+        st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
+        if st.checkbox("Wis Geschiedenis"):
+            if st.button("Bevestig Alles Wissen"):
+                for rid in df_l['airtable_id']: requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
+                st.rerun()
