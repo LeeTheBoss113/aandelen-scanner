@@ -7,8 +7,8 @@ import time
 from datetime import datetime
 
 # --- CONFIG ---
-AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
-BASE_ID = "appgvzDsvbvKi7e45"
+AIRTABLE_TOKEN = "JOUW_PAT_TOKEN_HIER"
+BASE_ID = "JOUW_BASE_ID_HIER"
 PORTFOLIO_TABLE = "Portfolio"
 LOG_TABLE = "Logboek"
 
@@ -73,65 +73,44 @@ def get_scan_metrics(ticker):
         rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
         p6 = ((cur-m6)/m6)*100
         p12 = ((cur-hist['Close'].iloc[0])/hist['Close'].iloc[0])*100
-        
         trend = "📈 Bullish" if p6 > 5 else "📉 Bearish" if p6 < -5 else "➡️ Side"
-        return {
-            "Ticker": ticker, "Trend": trend, "Prijs": round(cur, 2), 
-            "RSI": round(rsi, 1), "6M %": round(p6, 1), "12M %": round(p12, 1)
-        }
+        return {"Ticker": ticker, "Trend": trend, "Prijs": round(cur, 2), "RSI": round(rsi, 1), "6M %": round(p6, 1), "12M %": round(p12, 1)}
     except: return None
 
 # --- UI COMPONENTEN ---
 def show_scanner(watchlist, mode, df_portfolio):
     results = []
-    owned_tickers = []
-    if not df_portfolio.empty and 'Ticker' in df_portfolio.columns:
-        owned_tickers = df_portfolio['Ticker'].str.upper().tolist()
-
+    owned_tickers = df_portfolio['Ticker'].str.upper().tolist() if not df_portfolio.empty and 'Ticker' in df_portfolio.columns else []
     for t in watchlist:
         m = get_scan_metrics(t)
         if m:
-            rsi = m['RSI']
-            p12 = m['12M %']
-            
+            rsi, p12 = m['RSI'], m['12M %']
             if mode == "Growth":
-                # LOGICA VOOR KOPEN EN VERKOPEN
                 if rsi < 35: m['Suggestie'] = "🔥 BUY DIP"
-                elif rsi > 75: m['Suggestie'] = "💰 TAKE PROFIT" # Het oververhitte sein
-                elif rsi > 70 and p12 > 40: m['Suggestie'] = "⚠️ PEAK ALERT" # De piek-waarschuwing
+                elif rsi > 75: m['Suggestie'] = "💰 TAKE PROFIT"
+                elif rsi > 70 and p12 > 40: m['Suggestie'] = "⚠️ PEAK ALERT"
                 elif m['6M %'] > 15: m['Suggestie'] = "🚀 MOMENTUM"
                 else: m['Suggestie'] = "⌛ WAIT"
-            else: # Dividend
+            else:
                 if rsi < 45: m['Suggestie'] = "💎 ACCUMULATE"
                 elif rsi > 68: m['Suggestie'] = "🛡️ HOLD/REDUCE"
                 else: m['Suggestie'] = "✅ STABLE"
             results.append(m)
-    
-    if not results: return
-    df = pd.DataFrame(results)
-    
-    def style_scanner(row):
-        styles = [''] * len(row)
-        if row['Ticker'] in owned_tickers:
-            styles[0] = 'background-color: #f39c12; color: white; font-weight: bold'
-        
-        val = row['Suggestie']
-        # Kleurcodes
-        if 'BUY' in val or 'ACCUMULATE' in val: sug_c = '#27ae60' # Groen
-        elif 'PROFIT' in val or 'PEAK' in val: sug_c = '#e67e22' # Donker oranje/Roodachtig
-        elif 'SELL' in val: sug_c = '#e74c3c' # Rood
-        elif 'MOMENTUM' in val: sug_c = '#3498db' # Blauw
-        else: sug_c = '#7f8c8d' # Grijs
-            
-        styles[-1] = f'background-color: {sug_c}; color: white; font-weight: bold'
-        return styles
-
-    st.dataframe(df.style.apply(style_scanner, axis=1), use_container_width=True, hide_index=True)
+    if results:
+        df = pd.DataFrame(results)
+        def style_scanner(row):
+            styles = [''] * len(row)
+            if row['Ticker'] in owned_tickers: styles[0] = 'background-color: #f39c12; color: white; font-weight: bold'
+            val = row['Suggestie']
+            sug_c = '#27ae60' if 'BUY' in val or 'ACCUMULATE' in val else '#e67e22' if 'PROFIT' in val or 'PEAK' in val else '#3498db' if 'MOMENTUM' in val else '#7f8c8d'
+            styles[-1] = f'background-color: {sug_c}; color: white; font-weight: bold'
+            return styles
+        st.dataframe(df.style.apply(style_scanner, axis=1), use_container_width=True, hide_index=True)
 
 def render_portfolio_compact(df, strategy_name):
     subset = df[df['Type'] == strategy_name] if not df.empty and 'Type' in df.columns else pd.DataFrame()
     if subset.empty:
-        st.info(f"Geen actieve {strategy_name} posities.")
+        st.info(f"Geen {strategy_name} posities.")
         return
     for _, row in subset.iterrows():
         ticker = str(row['Ticker']).upper()
@@ -156,11 +135,12 @@ DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'M
 with st.sidebar:
     st.title("📊 My Assistant")
     with st.expander("ℹ️ Spiekbriefje", expanded=True):
-        st.write("**💰 Take Profit:** RSI is zeer hoog (>75). De rek is er waarschijnlijk tijdelijk uit.")
-        st.write("**⚠️ Peak Alert:** Aandeel staat op een jaar-top én is oververhit. Pas op voor omkeer.")
-        st.write("**🔥 Buy Dip:** RSI < 35. Aandeel is technisch 'goedkoop'.")
-    
+        st.write("**💰 Take Profit:** RSI >75. Verkoop-zone.")
+        st.write("**⚠️ Peak Alert:** RSI >70 & Jaar-top.")
+        st.write("**🔥 Buy Dip:** RSI < 35. Koop-zone.")
+        st.write("**Oranje Ticker:** Reeds in bezit.")
     st.divider()
+    # Berekening lopende winst
     gw, dw = 0, 0
     if not df_p.empty:
         for _, r in df_p.iterrows():
@@ -170,9 +150,8 @@ with st.sidebar:
                 if r['Type'] == "Growth": gw += w
                 else: dw += w
             except: pass
-    st.metric("🚀 Growth Winst", f"€{gw:.2f}")
-    st.metric("💎 Dividend Winst", f"€{dw:.2f}")
-    
+    st.metric("🚀 Lopende Winst Growth", f"€{gw:.2f}")
+    st.metric("💎 Lopende Winst Dividend", f"€{dw:.2f}")
     st.divider()
     with st.form("add_new"):
         st.subheader("➕ Nieuwe Positie")
@@ -205,9 +184,34 @@ with tab2:
         show_scanner(DIVIDEND_WATCH, "Dividend", df_p)
 
 with tab3:
+    st.header("📜 Historisch Overzicht")
     if not df_l.empty:
+        # Data preparatie
+        df_l['Datum'] = pd.to_datetime(df_l['Datum'])
+        total_profit = df_l['Winst_Euro'].sum()
+        avg_ret = df_l['Rendement_Perc'].mean()
+        win_rate = (len(df_l[df_l['Winst_Euro'] > 0]) / len(df_l)) * 100
+        
+        # Dashboard Metrics
+        c_p1, c_p2, c_p3 = st.columns(3)
+        c_p1.metric("💰 Totaal Gerealiseerd", f"€{total_profit:.2f}", delta=f"{len(df_l)} trades")
+        c_p2.metric("📈 Gem. Rendement", f"{avg_ret:.2f}%")
+        c_p3.metric("🎯 Win Rate", f"{win_rate:.1f}%")
+        
+        st.divider()
+        
+        # Winstverloop Grafiek
+        st.subheader("Winstverloop per dag")
+        chart_data = df_l.groupby('Datum')['Winst_Euro'].sum().reset_index()
+        st.bar_chart(data=chart_data, x='Datum', y='Winst_Euro', use_container_width=True)
+        
+        st.divider()
         st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
-        if st.checkbox("Wis Geschiedenis"):
-            if st.button("Bevestig Alles Wissen"):
+        
+        st.divider()
+        if st.checkbox("Systeembeheer: Wis Logboek"):
+            if st.button("Definitief Verwijderen"):
                 for rid in df_l['airtable_id']: requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
                 st.rerun()
+    else:
+        st.info("Het logboek is nog leeg. Zodra je posities verkoopt, zie je hier de resultaten.")
