@@ -7,8 +7,8 @@ import time
 from datetime import datetime
 
 # --- CONFIG ---
-AIRTABLE_TOKEN = "JOUW_PAT_TOKEN_HIER"
-BASE_ID = "JOUW_BASE_ID_HIER"
+AIRTABLE_TOKEN = "patCdgzOgVDPNlGCw.3008de99d994972e122dc62031b3f5aa5f2647cfa75c5ac67215dc72eba2ce07"
+BASE_ID = "appgvzDsvbvKi7e45"
 PORTFOLIO_TABLE = "Portfolio"
 LOG_TABLE = "Logboek"
 
