@@ -12,7 +12,7 @@ BASE_ID = "appgvzDsvbvKi7e45"
 PORTFOLIO_TABLE = "Portfolio"
 LOG_TABLE = "Logboek"
 
-HEADERS = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
+HEADERS = {"Authorization": f"Bearer {HEADERS['Authorization']}", "Content-Type": "application/json"} if 'HEADERS' in locals() else {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
 
 st.set_page_config(layout="wide", page_title="Trader Dashboard 2026", initial_sidebar_state="expanded")
 
@@ -21,7 +21,6 @@ st.markdown("""
     <style>
     [data-testid="stExpander"] { border: 1px solid #f0f2f6; border-radius: 8px; margin-bottom: -15px; }
     .stMetric { padding: 0px !important; }
-    div[data-testid="stVerticalBlock"] > div { spacing: 0rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -134,13 +133,15 @@ DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'M
 
 with st.sidebar:
     st.title("📊 My Assistant")
-    with st.expander("ℹ️ Spiekbriefje", expanded=True):
-        st.write("**💰 Take Profit:** RSI >75. Verkoop-zone.")
-        st.write("**⚠️ Peak Alert:** RSI >70 & Jaar-top.")
-        st.write("**🔥 Buy Dip:** RSI < 35. Koop-zone.")
-        st.write("**Oranje Ticker:** Reeds in bezit.")
+    
+    # --- TESTDUUR BEREKENING ---
+    if not df_l.empty:
+        df_l['Datum'] = pd.to_datetime(df_l['Datum'])
+        start_date = df_l['Datum'].min()
+        duur = (datetime.now() - start_date).days
+        st.info(f"⏱️ Testduur: **{duur} dagen** (sinds {start_date.strftime('%d-%m-%Y')})")
+
     st.divider()
-    # Berekening lopende winst
     gw, dw = 0, 0
     if not df_p.empty:
         for _, r in df_p.iterrows():
@@ -152,6 +153,7 @@ with st.sidebar:
             except: pass
     st.metric("🚀 Lopende Winst Growth", f"€{gw:.2f}")
     st.metric("💎 Lopende Winst Dividend", f"€{dw:.2f}")
+    
     st.divider()
     with st.form("add_new"):
         st.subheader("➕ Nieuwe Positie")
@@ -163,7 +165,7 @@ with st.sidebar:
             requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}", headers=HEADERS, json={"fields": {"Ticker": t_in, "Inleg": i_in, "Koers": k_in, "Type": s_in}})
             st.rerun()
 
-tab1, tab2, tab3 = st.tabs(["🚀 Growth Strategy", "💎 Dividend Wealth", "📜 Logboek"])
+tab1, tab2, tab3 = st.tabs(["🚀 Growth", "💎 Dividend", "📜 Logboek"])
 
 with tab1:
     c1, c2 = st.columns([1, 2])
@@ -184,34 +186,34 @@ with tab2:
         show_scanner(DIVIDEND_WATCH, "Dividend", df_p)
 
 with tab3:
-    st.header("📜 Historisch Overzicht")
+    st.header("📜 Historisch Overzicht (Maandelijks)")
     if not df_l.empty:
-        # Data preparatie
         df_l['Datum'] = pd.to_datetime(df_l['Datum'])
+        df_l['Maand'] = df_l['Datum'].dt.to_period('M').astype(str)
+        
         total_profit = df_l['Winst_Euro'].sum()
         avg_ret = df_l['Rendement_Perc'].mean()
-        win_rate = (len(df_l[df_l['Winst_Euro'] > 0]) / len(df_l)) * 100
         
-        # Dashboard Metrics
         c_p1, c_p2, c_p3 = st.columns(3)
-        c_p1.metric("💰 Totaal Gerealiseerd", f"€{total_profit:.2f}", delta=f"{len(df_l)} trades")
+        c_p1.metric("💰 Totaal Gerealiseerd", f"€{total_profit:.2f}")
         c_p2.metric("📈 Gem. Rendement", f"{avg_ret:.2f}%")
-        c_p3.metric("🎯 Win Rate", f"{win_rate:.1f}%")
+        
+        # Berekening winst per maand
+        maand_winst = df_l.groupby('Maand')['Winst_Euro'].sum().reset_index()
+        avg_per_month = maand_winst['Winst_Euro'].mean()
+        c_p3.metric("📅 Gem. per Maand", f"€{avg_per_month:.2f}")
         
         st.divider()
-        
-        # Winstverloop Grafiek
-        st.subheader("Winstverloop per dag")
-        chart_data = df_l.groupby('Datum')['Winst_Euro'].sum().reset_index()
-        st.bar_chart(data=chart_data, x='Datum', y='Winst_Euro', use_container_width=True)
+        st.subheader("Winstverloop per Maand")
+        st.bar_chart(data=maand_winst, x='Maand', y='Winst_Euro', use_container_width=True)
         
         st.divider()
+        st.subheader("Alle Transacties")
         st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
         
-        st.divider()
-        if st.checkbox("Systeembeheer: Wis Logboek"):
+        if st.checkbox("Wis Logboek"):
             if st.button("Definitief Verwijderen"):
                 for rid in df_l['airtable_id']: requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
                 st.rerun()
     else:
-        st.info("Het logboek is nog leeg. Zodra je posities verkoopt, zie je hier de resultaten.")
+        st.info("Logboek is leeg.")
