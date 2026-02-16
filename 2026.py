@@ -12,7 +12,7 @@ BASE_ID = "appgvzDsvbvKi7e45"
 PORTFOLIO_TABLE = "Portfolio"
 LOG_TABLE = "Logboek"
 
-HEADERS = {"Authorization": f"Bearer {HEADERS['Authorization']}", "Content-Type": "application/json"} if 'HEADERS' in locals() else {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
+HEADERS = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
 
 st.set_page_config(layout="wide", page_title="Trader Dashboard 2026", initial_sidebar_state="expanded")
 
@@ -21,6 +21,8 @@ st.markdown("""
     <style>
     [data-testid="stExpander"] { border: 1px solid #f0f2f6; border-radius: 8px; margin-bottom: -15px; }
     .stMetric { padding: 0px !important; }
+    .status-gold { background-color: #f1c40f; color: black; padding: 5px; border-radius: 5px; font-weight: bold; }
+    .status-gray { background-color: #ecf0f1; color: #7f8c8d; padding: 5px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -111,15 +113,31 @@ def render_portfolio_compact(df, strategy_name):
     if subset.empty:
         st.info(f"Geen {strategy_name} posities.")
         return
+    
     for _, row in subset.iterrows():
         ticker = str(row['Ticker']).upper()
         try:
             p = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
-            winst = ((row['Inleg']/row['Koers']) * p) - row['Inleg']
-            with st.expander(f"**{ticker}** | Winst: **€{winst:.2f}**"):
+            perc_winst = ((p - row['Koers']) / row['Koers']) * 100
+            euro_winst = ((row['Inleg']/row['Koers']) * p) - row['Inleg']
+            
+            # --- STRATEGIE LOGICA ---
+            status_text = ""
+            status_style = ""
+            if perc_winst >= 15:
+                status_text = "🎯 TARGET BEREIKT (15%)"
+                status_style = "background-color: #f1c40f; color: black; font-weight: bold; padding: 3px; border-radius: 3px;"
+            elif perc_winst < 3 and perc_winst > -3:
+                status_text = "💤 STAGNATIE (Heroverweeg)"
+                status_style = "color: #bdc3c7; font-style: italic;"
+
+            with st.expander(f"**{ticker}** | **{perc_winst:.1f}%** (€{euro_winst:.2f})"):
+                if status_text:
+                    st.markdown(f"<div style='{status_style}'>{status_text}</div>", unsafe_allow_html=True)
+                
                 c1, c2, c3 = st.columns([1,1,0.5])
                 c1.write(f"Inleg: €{row['Inleg']:.0f}")
-                c2.write(f"Res: {((winst/row['Inleg'])*100):.1f}%")
+                c2.write(f"Koers: {row['Koers']:.2f} ➔ {p:.2f}")
                 if c3.button("🗑️", key=f"del_{row['airtable_id']}"):
                     if sell_position(row, p): st.rerun()
         except: pass
@@ -134,14 +152,14 @@ DIVIDEND_WATCH = ['KO', 'PEP', 'PG', 'O', 'ABBV', 'JNJ', 'MMM', 'LOW', 'TGT', 'M
 with st.sidebar:
     st.title("📊 My Assistant")
     
-    # --- TESTDUUR BEREKENING ---
     if not df_l.empty:
         df_l['Datum'] = pd.to_datetime(df_l['Datum'])
         start_date = df_l['Datum'].min()
         duur = (datetime.now() - start_date).days
-        st.info(f"⏱️ Testduur: **{duur} dagen** (sinds {start_date.strftime('%d-%m-%Y')})")
+        st.info(f"⏱️ Testduur: **{duur} dagen**")
 
     st.divider()
+    # Berekening lopende winst
     gw, dw = 0, 0
     if not df_p.empty:
         for _, r in df_p.iterrows():
@@ -186,7 +204,7 @@ with tab2:
         show_scanner(DIVIDEND_WATCH, "Dividend", df_p)
 
 with tab3:
-    st.header("📜 Historisch Overzicht (Maandelijks)")
+    st.header("📜 Historisch Overzicht")
     if not df_l.empty:
         df_l['Datum'] = pd.to_datetime(df_l['Datum'])
         df_l['Maand'] = df_l['Datum'].dt.to_period('M').astype(str)
@@ -198,17 +216,12 @@ with tab3:
         c_p1.metric("💰 Totaal Gerealiseerd", f"€{total_profit:.2f}")
         c_p2.metric("📈 Gem. Rendement", f"{avg_ret:.2f}%")
         
-        # Berekening winst per maand
         maand_winst = df_l.groupby('Maand')['Winst_Euro'].sum().reset_index()
         avg_per_month = maand_winst['Winst_Euro'].mean()
         c_p3.metric("📅 Gem. per Maand", f"€{avg_per_month:.2f}")
         
         st.divider()
-        st.subheader("Winstverloop per Maand")
         st.bar_chart(data=maand_winst, x='Maand', y='Winst_Euro', use_container_width=True)
-        
-        st.divider()
-        st.subheader("Alle Transacties")
         st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True, hide_index=True)
         
         if st.checkbox("Wis Logboek"):
