@@ -124,7 +124,7 @@ def render_portfolio_compact(df, strategy_name):
             # --- STRATEGIE LOGICA ---
             status_text = ""
             status_style = ""
-            if perc_winst >= 15:
+            if perc_winst >= 10:
                 status_text = "🎯 TARGET BEREIKT (15%)"
                 status_style = "background-color: #f1c40f; color: black; font-weight: bold; padding: 3px; border-radius: 3px;"
             elif perc_winst < 3 and perc_winst > -3:
@@ -229,4 +229,5 @@ with tab3:
                 for rid in df_l['airtable_id']: requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}/{rid}", headers=HEADERS)
                 st.rerun()
     else:
+
         st.info("Logboek is leeg.")
