@@ -125,7 +125,7 @@ def render_portfolio_compact(df, strategy_name):
             status_text = ""
             status_style = ""
             if perc_winst >= 10:
-                status_text = "🎯 TARGET BEREIKT (15%)"
+                status_text = "🎯 TARGET BEREIKT (10%)"
                 status_style = "background-color: #f1c40f; color: black; font-weight: bold; padding: 3px; border-radius: 3px;"
             elif perc_winst < 3 and perc_winst > -3:
                 status_text = "💤 STAGNATIE (Heroverweeg)"
@@ -231,3 +231,4 @@ with tab3:
     else:
 
         st.info("Logboek is leeg.")
+
