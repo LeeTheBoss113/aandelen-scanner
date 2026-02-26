@@ -13,7 +13,7 @@ LOG_TABLE = "Logboek"
 
 HEADERS = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
 
-st.set_page_config(layout="wide", page_title="Live Profit Scanner 2026", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Profit Scanner 2026", initial_sidebar_state="expanded")
 
 # --- DATA FUNCTIES ---
 def get_airtable_data(table_name):
@@ -22,90 +22,140 @@ def get_airtable_data(table_name):
         r = requests.get(url, headers=HEADERS, timeout=10)
         if r.status_code == 200:
             records = r.json().get('records', [])
-            return pd.DataFrame([ {**rec['fields'], 'airtable_id': rec['id']} for rec in records ])
+            rows = []
+            for rec in records:
+                row = rec['fields']
+                # Alleen toevoegen als er een Ticker is ingevuld om AttributeError te voorkomen
+                if row.get('Ticker'):
+                    row['airtable_id'] = rec['id']
+                    rows.append(row)
+            return pd.DataFrame(rows)
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-@st.cache_data(ttl=600)  # Ververst elke 10 minuten
-def get_dynamic_watchlist():
-    """Haalt live de meest interessante aandelen op van Yahoo Finance"""
-    try:
-        # We gebruiken bekende tickers als basis, maar vullen dit aan met de huidige top-performers
-        # In een geavanceerdere setup zou je hier een echte API-scrapper gebruiken
-        # Voor nu laden we een brede selectie van 'High Volume' en 'Top Gainers'
-        base_tickers = ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMD', 'PLTR', 'COIN', 'MSTR', 'MARA', 'META', 'AMZN', 'GOOGL', 'BABA']
-        return base_tickers
-    except:
-        return ['NVDA', 'TSLA', 'PLTR']
+def sell_position(row, current_price):
+    aantal = row['Inleg'] / row['Koers'] if row['Koers'] > 0 else 0
+    vw = aantal * current_price
+    winst = vw - row['Inleg']
+    log_payload = {
+        "fields": {
+            "Ticker": str(row['Ticker']).upper(),
+            "Inleg": float(row['Inleg']),
+            "Verkoopwaarde": round(float(vw), 2),
+            "Winst_Euro": round(float(winst), 2),
+            "Rendement_Perc": round((winst/row['Inleg']*100), 2) if row['Inleg'] > 0 else 0,
+            "Type": row.get('Type', 'Growth'),
+            "Datum": datetime.now().strftime('%Y-%m-%d')
+        }
+    }
+    res = requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{LOG_TABLE}", headers=HEADERS, json=log_payload)
+    if res.status_code == 200:
+        requests.delete(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}/{row['airtable_id']}", headers=HEADERS)
+        return True
+    return False
 
 @st.cache_data(ttl=300)
 def get_scan_metrics(ticker):
     try:
         t = yf.Ticker(ticker)
         hist = t.history(period="6mo")
-        if len(hist) < 20: return None
+        if len(hist) < 10: return None
         cur = hist['Close'].iloc[-1]
         rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
-        vol_change = (hist['Volume'].iloc[-1] / hist['Volume'].mean()) 
-        return {
-            "Ticker": ticker, 
-            "Prijs": round(cur, 2), 
-            "RSI": round(rsi, 1), 
-            "Volume_Boost": round(vol_change, 2),
-            "Day_%": round(((hist['Close'].iloc[-1] - hist['Open'].iloc[-1]) / hist['Open'].iloc[-1]) * 100, 2)
-        }
+        vol_boost = (hist['Volume'].iloc[-1] / hist['Volume'].mean()) 
+        day_perc = ((hist['Close'].iloc[-1] - hist['Open'].iloc[-1]) / hist['Open'].iloc[-1]) * 100
+        return {"Ticker": ticker, "Prijs": round(cur, 2), "RSI": round(rsi, 1), "Vol_Boost": round(vol_boost, 2), "Day_%": round(day_perc, 2)}
     except: return None
 
-# --- UI LOGICA ---
+# --- APP START ---
 df_p = get_airtable_data(PORTFOLIO_TABLE)
 df_l = get_airtable_data(LOG_TABLE)
 
-st.title("🚀 Real-Time Profit Scanner")
-st.markdown("Deze scanner zoekt naar **momentum** en **volume** in de huidige markt.")
+with st.sidebar:
+    st.title("📊 My Assistant")
+    # Testduur berekenen
+    if not df_l.empty and 'Datum' in df_l.columns:
+        df_l['Datum'] = pd.to_datetime(df_l['Datum'])
+        start_date = df_l['Datum'].min()
+        duur = (datetime.now() - start_date).days
+        st.info(f"⏱️ Testduur: **{duur} dagen**")
 
-# Dynamische Watchlist ophalen
-watchlist = get_dynamic_watchlist()
-results = []
-for t in watchlist:
-    m = get_scan_metrics(t)
-    if m:
-        # Strategie: Filter op aandelen met hoog volume OF een RSI dip
-        if m['Volume_Boost'] > 1.5: m['Actie'] = "🔥 HIGH VOLUME"
-        elif m['RSI'] < 35: m['Actie'] = "🛡️ OVERSOLD (BUY)"
-        elif m['RSI'] > 70: m['Actie'] = "⚠️ OVERBOUGHT"
-        else: m['Actie'] = "⚖️ NEUTRAL"
-        results.append(m)
+    st.divider()
+    with st.form("add_new"):
+        st.subheader("➕ Nieuwe Positie")
+        t_in = st.text_input("Ticker (bijv. NVDA)").upper()
+        i_in = st.number_input("Inleg", 10)
+        k_in = st.number_input("Koers", 0.01)
+        s_in = st.selectbox("Type", ["Growth", "Dividend"])
+        if st.form_submit_button("Toevoegen"):
+            if t_in:
+                requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{PORTFOLIO_TABLE}", headers=HEADERS, json={"fields": {"Ticker": t_in, "Inleg": i_in, "Koers": k_in, "Type": s_in}})
+                st.rerun()
 
-if results:
-    scan_df = pd.DataFrame(results).sort_values(by="Day_%", ascending=False)
+tab1, tab2 = st.tabs(["🚀 Markt Scanner & Portfolio", "📜 Logboek (Maandwinst)"])
+
+with tab1:
+    c1, c2 = st.columns([1.2, 1])
     
-    # Styling
-    def highlight_profit(row):
-        color = 'transparent'
-        if row['Actie'] == "🔥 HIGH VOLUME": color = '#1abc9c'
-        elif row['Actie'] == "🛡️ OVERSOLD (BUY)": color = '#3498db'
-        elif row['Actie'] == "⚠️ OVERBOUGHT": color = '#e74c3c'
-        return [f'background-color: {color}' if i == len(row)-1 else '' for i in range(len(row))]
+    with c1:
+        st.subheader("🔥 Dynamische Scanner")
+        watchlist = ['NVDA', 'TSLA', 'PLTR', 'AAPL', 'AMD', 'COIN', 'MSTR', 'META', 'AMZN', 'GOOGL', 'ASML.AS']
+        scan_results = []
+        for t in watchlist:
+            m = get_scan_metrics(t)
+            if m: scan_results.append(m)
+        
+        if scan_results:
+            sdf = pd.DataFrame(scan_results).sort_values(by="Day_%", ascending=False)
+            st.dataframe(sdf, use_container_width=True, hide_index=True)
 
-    st.dataframe(scan_df.style.apply(highlight_profit, axis=1), use_container_width=True, hide_index=True)
+    with c2:
+        st.subheader("💼 Mijn Portfolio")
+        if not df_p.empty:
+            for _, row in df_p.iterrows():
+                ticker = str(row['Ticker']).upper()
+                try:
+                    p_live = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
+                    win_p = ((p_live - row['Koers']) / row['Koers']) * 100
+                    win_e = ((row['Inleg']/row['Koers']) * p_live) - row['Inleg']
+                    
+                    # SALAMI STRATEGIE KLEUREN
+                    color = "#ffffff" # wit
+                    status = ""
+                    if win_p >= 15: 
+                        color = "#f1c40f" # goud
+                        status = "🎯 TARGET!"
+                    elif -2 < win_p < 2:
+                        color = "#bdc3c7" # grijs (stagnatie)
+                        status = "💤"
 
-st.divider()
+                    with st.expander(f"{status} **{ticker}**: {win_p:.1f}%"):
+                        st.markdown(f"Huidige winst: <span style='color:{color}; font-weight:bold;'>€{win_e:.2f}</span>", unsafe_allow_html=True)
+                        if st.button(f"Verkoop {ticker}", key=f"sell_{row['airtable_id']}"):
+                            if sell_position(row, p_live): st.rerun()
+                except: st.warning(f"Kon {ticker} niet laden.")
+        else:
+            st.info("Geen actieve posities.")
 
-# --- PORTFOLIO SECTIE MET 15% TRIGGER ---
-st.subheader("💼 Jouw Strategie Check")
-if not df_p.empty:
-    for _, row in df_p.iterrows():
-        t_data = yf.Ticker(row['Ticker']).history(period="1d")
-        if not t_data.empty:
-            cur_p = t_data['Close'].iloc[-1]
-            win_perc = ((cur_p - row['Koers']) / row['Koers']) * 100
-            
-            # De 15% Salami-regel
-            label = "✅ GEZOND"
-            if win_perc >= 15:
-                label = "🎯 TARGET BEREIKT: PAK WINST!"
-                st.balloons()
-            elif win_perc < -5:
-                label = "⚠️ STOP-LOSS ALERT"
+with tab2:
+    st.header("Maandelijks Resultaat")
+    if not df_l.empty:
+        df_l['Datum'] = pd.to_datetime(df_l['Datum'])
+        df_l['Maand'] = df_l['Datum'].dt.to_period('M').astype(str)
+        
+        # Metrics
+        total = df_l['Winst_Euro'].sum()
+        avg_month = df_l.groupby('Maand')['Winst_Euro'].sum().mean()
+        
+        col1, col2 = st.columns(2)
+        col1.metric("Totaal Winst", f"€{total:.2f}")
+        col2.metric("Gem. per Maand", f"€{avg_month:.2f}")
 
-            st.metric(f"{row['Ticker']} (Inleg: €{row['Inleg']})", f"{win_perc:.2f}%", delta=label)
+        # Maandelijkse grafiek
+        maand_data = df_l.groupby('Maand')['Winst_Euro'].sum().reset_index()
+        st.bar_chart(data=maand_data, x='Maand', y='Winst_Euro')
+        
+        st.divider()
+        st.dataframe(df_l.sort_values(by='Datum', ascending=False), use_container_width=True)
+    else:
+        st.info("Nog geen verkopen geregistreerd.")
